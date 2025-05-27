@@ -53,38 +53,36 @@ interface ApiResponse {
   };
 }
 
-// Function to parse lock alias into street number and room number
+// Function to parse lock alias into street number and lock name
 function parseLockAlias(lockAlias: string): {
   streetNumber: string;
-  roomNumber: string;
+  lockName: string;
+  reason?: string;
 } {
-  // Try different formats
-  const formats = [
-    // Format: "1117 #A1"
-    /^(\d+)\s+#([A-Za-z0-9]+)$/,
-    // Format: "101 - Sartain"
-    /^(\d+)\s+-\s+[A-Za-z]+$/,
-    // Format: "101 Sartain"
-    /^(\d+)\s+[A-Za-z]+$/,
-  ];
-
-  for (const format of formats) {
-    const match = lockAlias.match(format);
-    if (match) {
-      const streetNumber = match[1];
-      if (!streetNumber) {
-        console.warn(`Could not parse lock alias: ${lockAlias}`);
-        return { streetNumber: "", roomNumber: "" };
-      }
-      // For formats without room number, use the street number as room number
-      const roomNumber = match[2] ? `#${match[2]}` : `#${streetNumber}`;
-      return { streetNumber, roomNumber };
+  // Extract street number and the rest as lock name
+  const match = lockAlias.match(/^(\d+)\s+(.+)$/);
+  
+  if (match && match[1] && match[2]) {
+    const streetNumber = match[1];
+    const lockName = match[2].trim();
+    
+    if (!streetNumber) {
+      return { 
+        streetNumber: "", 
+        lockName: "",
+        reason: `Invalid street number in alias: ${lockAlias}`
+      };
     }
+    
+    return { streetNumber, lockName };
   }
 
-  // If no format matches, return empty strings
-  console.warn(`Could not parse lock alias: ${lockAlias}`);
-  return { streetNumber: "", roomNumber: "" };
+  // If no format matches, return empty strings with reason
+  return { 
+    streetNumber: "", 
+    lockName: "",
+    reason: `Lock alias format not recognized: ${lockAlias}. Expected format is: "1117 Front Door" or "101 A1"`
+  };
 }
 
 async function fetchLocks(page: number): Promise<ApiResponse> {
@@ -127,41 +125,53 @@ async function populateLockProfiles() {
 
     let currentPage = 1;
     let totalProcessed = 0;
+    let totalSkipped = 0;
+    let totalFromAPI = 0;
     let hasMore = true;
+    let skippedLocks: Array<{lockId: number, lockAlias: string, reason: string}> = [];
 
     while (hasMore) {
-      console.log(`Fetching page ${currentPage}...`);
+      console.log(`\nFetching page ${currentPage}...`);
       const response = await fetchLocks(currentPage);
 
       if (response.code !== 200) {
         throw new Error(`API error: ${response.msg}`);
       }
 
-      const { list, pages } = response.data;
+      const { list, pages, total } = response.data;
+      totalFromAPI = total;
+
+      console.log(`Page ${currentPage}: Received ${list.length} locks from API`);
 
       // Process each lock
       for (const lock of list) {
-        const { streetNumber, roomNumber } = parseLockAlias(lock.lockAlias);
+        const { streetNumber, lockName, reason } = parseLockAlias(lock.lockAlias);
 
-        if (!streetNumber || !roomNumber) {
+        if (!streetNumber || !lockName) {
           console.warn(
             `Skipping lock ${lock.lockId} due to invalid alias format: ${lock.lockAlias}`,
           );
+          skippedLocks.push({
+            lockId: lock.lockId,
+            lockAlias: lock.lockAlias,
+            reason: reason || "Unknown reason"
+          });
+          totalSkipped++;
           continue;
         }
 
         // Create or update LockProfile
         await db.lockProfile.upsert({
           where: {
-            streetNumber_roomNumber: {
+            streetNumber_lockName: {
               streetNumber,
-              roomNumber,
+              lockName,
             },
           },
           create: {
             fullPropertyName: (lock.groupName as string) || "Unknown Property",
             streetNumber,
-            roomNumber,
+            lockName,
             lockId: lock.lockId.toString(),
             lockCode: lock.noKeyPwd ? `#${lock.noKeyPwd}` : null,
           },
@@ -175,7 +185,7 @@ async function populateLockProfiles() {
         totalProcessed++;
       }
 
-      console.log(`Processed ${list.length} locks from page ${currentPage}`);
+      console.log(`Page ${currentPage}: Processed ${list.length} locks`);
 
       // Check if there are more pages
       hasMore = currentPage < pages;
@@ -184,7 +194,22 @@ async function populateLockProfiles() {
       }
     }
 
-    console.log(`Successfully processed all ${totalProcessed} locks`);
+    // Print summary
+    console.log("\n=== Summary ===");
+    console.log(`Total locks from API: ${totalFromAPI}`);
+    console.log(`Successfully processed: ${totalProcessed}`);
+    console.log(`Skipped locks: ${totalSkipped}`);
+    
+    if (skippedLocks.length > 0) {
+      console.log("\n=== Skipped Locks Details ===");
+      skippedLocks.forEach(lock => {
+        console.log(`Lock ID: ${lock.lockId}`);
+        console.log(`Alias: ${lock.lockAlias}`);
+        console.log(`Reason: ${lock.reason}`);
+        console.log("---");
+      });
+    }
+
   } catch (error) {
     console.error("Error populating lock profiles:", error);
   }

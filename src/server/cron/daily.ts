@@ -152,17 +152,16 @@ async function fetchReservationsPage(
 // Function to parse property name components
 function parsePropertyName(propertyName: string): {
   streetNumber: string;
-  roomNumber: string;
+  lockName: string;
 } {
   // Extract street number (first numeric value)
   const streetNumberMatch = /^\d+/.exec(propertyName);
   const streetNumber = streetNumberMatch ? streetNumberMatch[0] : "";
 
-  // Extract room number (value with #)
-  const roomNumberMatch = /#\d+/.exec(propertyName);
-  const roomNumber = roomNumberMatch ? roomNumberMatch[0] : "";
+  // Extract lock name (everything after the street number)
+  const lockName = propertyName.replace(/^\d+\s*/, "").trim();
 
-  return { streetNumber, roomNumber };
+  return { streetNumber, lockName };
 }
 
 // Function to process a single reservation
@@ -217,7 +216,7 @@ async function processReservation(reservation: Reservation): Promise<void> {
   });
 
   // Parse property name and create/update LockProfile
-  const { streetNumber, roomNumber } = parsePropertyName(
+  const { streetNumber, lockName } = parsePropertyName(
     reservation.property.name,
   );
 
@@ -226,7 +225,7 @@ async function processReservation(reservation: Reservation): Promise<void> {
     const existingLockProfile = await db.lockProfile.findFirst({
       where: {
         streetNumber,
-        roomNumber,
+        lockName,
       },
     });
 
@@ -245,7 +244,7 @@ async function processReservation(reservation: Reservation): Promise<void> {
         data: {
           fullPropertyName: reservation.property.name,
           streetNumber,
-          roomNumber,
+          lockName,
           reservationId: savedReservation.id,
         },
       });

@@ -116,7 +116,7 @@ export default function LocksPage() {
                       />
                     </td>
                     <td className="px-4 py-2 border">{lock.streetNumber}</td>
-                    <td className="px-4 py-2 border">{lock.roomNumber}</td>
+                    <td className="px-4 py-2 border">{lock.lockName}</td>
                     <td className="px-4 py-2 border">
                       <input
                         type="text"
@@ -163,7 +163,7 @@ export default function LocksPage() {
                   <>
                     <td className="px-4 py-2 border">{lock.fullPropertyName}</td>
                     <td className="px-4 py-2 border">{lock.streetNumber}</td>
-                    <td className="px-4 py-2 border">{lock.roomNumber}</td>
+                    <td className="px-4 py-2 border">{lock.lockName}</td>
                     <td className="px-4 py-2 border">{lock.lockId ?? "-"}</td>
                     <td className="px-4 py-2 border">{lock.lockCode ?? "-"}</td>
                     <td className="px-4 py-2 border">

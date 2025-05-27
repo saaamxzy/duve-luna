@@ -109,7 +109,7 @@ model LockProfile {
     // Property name components
     fullPropertyName String
     streetNumber    String
-    roomNumber      String
+    lockName        String    // The name/identifier of the lock (e.g., "Front Door", "Garage", "A1")
 
     // Lock information
     lockId          String?  // Optional as it will be entered manually later
@@ -119,6 +119,6 @@ model LockProfile {
     reservation     Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
     reservationId   String?
 
-    @@unique([streetNumber, roomNumber])
+    @@unique([streetNumber, lockName])
     @@index([reservationId])
 }
