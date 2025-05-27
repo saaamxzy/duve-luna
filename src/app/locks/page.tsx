@@ -1,73 +1,42 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { LockProfile } from "@prisma/client";
-
-interface PaginationInfo {
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
-}
 
 interface LocksApiResponse {
   locks: LockProfile[];
-  pagination: PaginationInfo;
 }
 
 function isLocksApiResponse(data: unknown): data is LocksApiResponse {
   if (typeof data !== "object" || data === null) return false;
   const obj = data as Record<string, unknown>;
-  return (
-    Array.isArray(obj.locks) &&
-    typeof obj.pagination === "object" &&
-    obj.pagination !== null
-  );
-}
-
-async function fetchLocks(page: number, pageSize: number): Promise<LocksApiResponse> {
-  const res = await fetch(`/api/locks?page=${page}&pageSize=${pageSize}`);
-  if (!res.ok) throw new Error("Failed to fetch locks");
-  const data: unknown = await res.json();
-  if (!isLocksApiResponse(data)) {
-    throw new Error("Invalid API response");
-  }
-  return data;
+  return Array.isArray(obj.locks);
 }
 
 export default function LocksPage() {
   const [locks, setLocks] = useState<LockProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingLock, setEditingLock] = useState<LockProfile | null>(null);
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    total: 0,
-    page: 1,
-    pageSize: 10,
-    totalPages: 0,
-  });
-
-  const fetchLocks = useCallback(async (page: number) => {
-    try {
-      const response = await fetch(
-        `/api/locks?page=${page}&pageSize=${pagination.pageSize}`,
-      );
-      const data: unknown = await response.json();
-      if (isLocksApiResponse(data)) {
-        setLocks(data.locks ?? []);
-        setPagination(data.pagination ?? pagination);
-      } else {
-        throw new Error("Invalid API response");
-      }
-    } catch (error) {
-      console.error("Error fetching locks:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [pagination.pageSize, pagination]);
 
   useEffect(() => {
-    void fetchLocks(pagination.page);
-  }, [pagination.page, fetchLocks]);
+    const fetchLocks = async () => {
+      try {
+        const response = await fetch('/api/locks');
+        const data: unknown = await response.json();
+        if (isLocksApiResponse(data)) {
+          setLocks(data.locks ?? []);
+        } else {
+          throw new Error("Invalid API response");
+        }
+      } catch (error) {
+        console.error("Error fetching locks:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchLocks();
+  }, []);
 
   const handleEdit = (lock: LockProfile) => {
     setEditingLock(lock);
@@ -87,7 +56,11 @@ export default function LocksPage() {
       });
 
       if (response.ok) {
-        await fetchLocks(pagination.page);
+        const updatedResponse = await fetch('/api/locks');
+        const data: unknown = await updatedResponse.json();
+        if (isLocksApiResponse(data)) {
+          setLocks(data.locks ?? []);
+        }
         setEditingLock(null);
       }
     } catch (error) {
@@ -99,13 +72,6 @@ export default function LocksPage() {
     setEditingLock(null);
   };
 
-  const handlePageChange = useCallback(
-    (newPage: number) => {
-      setPagination((prev) => ({ ...prev, page: newPage }));
-    },
-    [],
-  );
-
   if (loading) {
     return <div className="p-4">Loading...</div>;
   }
@@ -115,7 +81,7 @@ export default function LocksPage() {
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Lock Profiles</h1>
         <div className="text-gray-600">
-          Total Locks: {pagination.total}
+          Total Locks: {locks.length}
         </div>
       </div>
 
@@ -214,32 +180,6 @@ export default function LocksPage() {
             ))}
           </tbody>
         </table>
-      </div>
-
-      {/* Pagination Controls */}
-      <div className="mt-4 flex justify-between items-center">
-        <div className="text-sm text-gray-600">
-          Showing {((pagination.page - 1) * pagination.pageSize) + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} locks
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => handlePageChange(pagination.page - 1)}
-            disabled={pagination.page === 1}
-            className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-          <span className="px-3 py-1">
-            Page {pagination.page} of {pagination.totalPages}
-          </span>
-          <button
-            onClick={() => handlePageChange(pagination.page + 1)}
-            disabled={pagination.page === pagination.totalPages}
-            className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-        </div>
       </div>
     </div>
   );
