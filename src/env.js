@@ -1,7 +1,7 @@
-import { createEnv } from "@t3-oss/env-nextjs";
-import { z } from "zod";
+const { createEnv } = require("@t3-oss/env-nextjs");
+const { z } = require("zod");
 
-export const env = createEnv({
+const env = createEnv({
   /**
    * Specify your server-side environment variables schema here. This way you can ensure the app
    * isn't built with invalid env vars.
@@ -46,3 +46,5 @@ export const env = createEnv({
    */
   emptyStringAsUndefined: true,
 });
+
+module.exports = { env };
