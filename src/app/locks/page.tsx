@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { LockProfile } from "@prisma/client";
 
 interface PaginationInfo {
@@ -8,6 +8,31 @@ interface PaginationInfo {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+interface LocksApiResponse {
+  locks: LockProfile[];
+  pagination: PaginationInfo;
+}
+
+function isLocksApiResponse(data: unknown): data is LocksApiResponse {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    Array.isArray(obj.locks) &&
+    typeof obj.pagination === "object" &&
+    obj.pagination !== null
+  );
+}
+
+async function fetchLocks(page: number, pageSize: number): Promise<LocksApiResponse> {
+  const res = await fetch(`/api/locks?page=${page}&pageSize=${pageSize}`);
+  if (!res.ok) throw new Error("Failed to fetch locks");
+  const data: unknown = await res.json();
+  if (!isLocksApiResponse(data)) {
+    throw new Error("Invalid API response");
+  }
+  return data;
 }
 
 export default function LocksPage() {
@@ -21,24 +46,28 @@ export default function LocksPage() {
     totalPages: 0,
   });
 
-  useEffect(() => {
-    fetchLocks(pagination.page);
-  }, [pagination.page]);
-
-  const fetchLocks = async (page: number) => {
+  const fetchLocks = useCallback(async (page: number) => {
     try {
       const response = await fetch(
         `/api/locks?page=${page}&pageSize=${pagination.pageSize}`,
       );
-      const data = await response.json();
-      setLocks(data.locks);
-      setPagination(data.pagination);
+      const data: unknown = await response.json();
+      if (isLocksApiResponse(data)) {
+        setLocks(data.locks ?? []);
+        setPagination(data.pagination ?? pagination);
+      } else {
+        throw new Error("Invalid API response");
+      }
     } catch (error) {
       console.error("Error fetching locks:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.pageSize, pagination]);
+
+  useEffect(() => {
+    void fetchLocks(pagination.page);
+  }, [pagination.page, fetchLocks]);
 
   const handleEdit = (lock: LockProfile) => {
     setEditingLock(lock);
@@ -70,9 +99,12 @@ export default function LocksPage() {
     setEditingLock(null);
   };
 
-  const handlePageChange = (newPage: number) => {
-    setPagination((prev) => ({ ...prev, page: newPage }));
-  };
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      setPagination((prev) => ({ ...prev, page: newPage }));
+    },
+    [],
+  );
 
   if (loading) {
     return <div className="p-4">Loading...</div>;
@@ -80,21 +112,23 @@ export default function LocksPage() {
 
   return (
     <div className="p-4">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">Lock Profiles</h1>
-        <div className="text-gray-600">Total Locks: {pagination.total}</div>
+        <div className="text-gray-600">
+          Total Locks: {pagination.total}
+        </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full border border-gray-200 bg-white">
+        <table className="min-w-full bg-white border border-gray-200">
           <thead>
             <tr className="bg-gray-100">
-              <th className="border px-4 py-2">Property Name</th>
-              <th className="border px-4 py-2">Street Number</th>
-              <th className="border px-4 py-2">Room Number</th>
-              <th className="border px-4 py-2">Lock ID</th>
-              <th className="border px-4 py-2">Lock Code</th>
-              <th className="border px-4 py-2">Actions</th>
+              <th className="px-4 py-2 border">Property Name</th>
+              <th className="px-4 py-2 border">Street Number</th>
+              <th className="px-4 py-2 border">Room Number</th>
+              <th className="px-4 py-2 border">Lock ID</th>
+              <th className="px-4 py-2 border">Lock Code</th>
+              <th className="px-4 py-2 border">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -102,7 +136,7 @@ export default function LocksPage() {
               <tr key={lock.id} className="hover:bg-gray-50">
                 {editingLock?.id === lock.id ? (
                   <>
-                    <td className="border px-4 py-2">
+                    <td className="px-4 py-2 border">
                       <input
                         type="text"
                         value={editingLock.fullPropertyName}
@@ -112,48 +146,48 @@ export default function LocksPage() {
                             fullPropertyName: e.target.value,
                           })
                         }
-                        className="w-full rounded border p-1"
+                        className="w-full p-1 border rounded"
                       />
                     </td>
-                    <td className="border px-4 py-2">{lock.streetNumber}</td>
-                    <td className="border px-4 py-2">{lock.roomNumber}</td>
-                    <td className="border px-4 py-2">
+                    <td className="px-4 py-2 border">{lock.streetNumber}</td>
+                    <td className="px-4 py-2 border">{lock.roomNumber}</td>
+                    <td className="px-4 py-2 border">
                       <input
                         type="text"
-                        value={editingLock.lockId || ""}
+                        value={editingLock.lockId ?? ""}
                         onChange={(e) =>
                           setEditingLock({
                             ...editingLock,
                             lockId: e.target.value,
                           })
                         }
-                        className="w-full rounded border p-1"
+                        className="w-full p-1 border rounded"
                       />
                     </td>
-                    <td className="border px-4 py-2">
+                    <td className="px-4 py-2 border">
                       <input
                         type="text"
-                        value={editingLock.lockCode || ""}
+                        value={editingLock.lockCode ?? ""}
                         onChange={(e) =>
                           setEditingLock({
                             ...editingLock,
                             lockCode: e.target.value,
                           })
                         }
-                        className="w-full rounded border p-1"
+                        className="w-full p-1 border rounded"
                         placeholder="#1234"
                       />
                     </td>
-                    <td className="border px-4 py-2">
+                    <td className="px-4 py-2 border">
                       <button
                         onClick={handleSave}
-                        className="mr-2 rounded bg-green-500 px-2 py-1 text-white"
+                        className="bg-green-500 text-white px-2 py-1 rounded mr-2"
                       >
                         Save
                       </button>
                       <button
                         onClick={handleCancel}
-                        className="rounded bg-gray-500 px-2 py-1 text-white"
+                        className="bg-gray-500 text-white px-2 py-1 rounded"
                       >
                         Cancel
                       </button>
@@ -161,17 +195,15 @@ export default function LocksPage() {
                   </>
                 ) : (
                   <>
-                    <td className="border px-4 py-2">
-                      {lock.fullPropertyName}
-                    </td>
-                    <td className="border px-4 py-2">{lock.streetNumber}</td>
-                    <td className="border px-4 py-2">{lock.roomNumber}</td>
-                    <td className="border px-4 py-2">{lock.lockId || "-"}</td>
-                    <td className="border px-4 py-2">{lock.lockCode || "-"}</td>
-                    <td className="border px-4 py-2">
+                    <td className="px-4 py-2 border">{lock.fullPropertyName}</td>
+                    <td className="px-4 py-2 border">{lock.streetNumber}</td>
+                    <td className="px-4 py-2 border">{lock.roomNumber}</td>
+                    <td className="px-4 py-2 border">{lock.lockId ?? "-"}</td>
+                    <td className="px-4 py-2 border">{lock.lockCode ?? "-"}</td>
+                    <td className="px-4 py-2 border">
                       <button
                         onClick={() => handleEdit(lock)}
-                        className="rounded bg-blue-500 px-2 py-1 text-white"
+                        className="bg-blue-500 text-white px-2 py-1 rounded"
                       >
                         Edit
                       </button>
@@ -185,17 +217,15 @@ export default function LocksPage() {
       </div>
 
       {/* Pagination Controls */}
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-4 flex justify-between items-center">
         <div className="text-sm text-gray-600">
-          Showing {(pagination.page - 1) * pagination.pageSize + 1} to{" "}
-          {Math.min(pagination.page * pagination.pageSize, pagination.total)} of{" "}
-          {pagination.total} locks
+          Showing {((pagination.page - 1) * pagination.pageSize) + 1} to {Math.min(pagination.page * pagination.pageSize, pagination.total)} of {pagination.total} locks
         </div>
         <div className="flex gap-2">
           <button
             onClick={() => handlePageChange(pagination.page - 1)}
             disabled={pagination.page === 1}
-            className="rounded border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Previous
           </button>
@@ -205,7 +235,7 @@ export default function LocksPage() {
           <button
             onClick={() => handlePageChange(pagination.page + 1)}
             disabled={pagination.page === pagination.totalPages}
-            className="rounded border px-3 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+            className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
           </button>

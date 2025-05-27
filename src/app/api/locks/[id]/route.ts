@@ -1,5 +1,41 @@
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "../../../../server/db";
+
+interface LockProfileUpdate {
+  fullPropertyName?: string;
+  lockId?: string | null;
+  lockCode?: string | null;
+}
+
+function isLockProfileUpdate(data: unknown): data is LockProfileUpdate {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  if (
+    "fullPropertyName" in obj &&
+    obj.fullPropertyName !== undefined &&
+    typeof obj.fullPropertyName !== "string"
+  ) {
+    return false;
+  }
+  if (
+    "lockId" in obj &&
+    obj.lockId !== undefined &&
+    typeof obj.lockId !== "string" &&
+    obj.lockId !== null
+  ) {
+    return false;
+  }
+  if (
+    "lockCode" in obj &&
+    obj.lockCode !== undefined &&
+    typeof obj.lockCode !== "string" &&
+    obj.lockCode !== null
+  ) {
+    return false;
+  }
+  return true;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,7 +44,7 @@ export async function GET(request: NextRequest) {
     const id = url.pathname.split("/").pop();
 
     const lock = await db.lockProfile.findUnique({
-      where: { id },
+      where: { id: id ?? undefined },
     });
 
     if (!lock) {
@@ -28,31 +64,36 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest) {
   try {
-    const id = params.id;
-    const data = await request.json();
-
+    // Extract the id param from the URL
+    const url = new URL(request.url);
+    const id = url.pathname.split("/").pop();
+    const data: unknown = await request.json();
+    if (!isLockProfileUpdate(data)) {
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 }
+      );
+    }
     // Validate lock code format if provided
-    if (data.lockCode && !data.lockCode.match(/^#\d{4}$/)) {
+    if (
+      typeof data.lockCode === "string" &&
+      !/^#\d{4}$/.exec(data.lockCode)
+    ) {
       return NextResponse.json(
         { error: "Lock code must start with # followed by 4 digits" },
         { status: 400 }
       );
     }
-
     const updatedLock = await db.lockProfile.update({
-      where: { id },
+      where: { id: id ?? undefined },
       data: {
-        fullPropertyName: data.fullPropertyName,
-        lockId: data.lockId,
-        lockCode: data.lockCode,
+        fullPropertyName: data.fullPropertyName ?? undefined,
+        lockId: data.lockId ?? undefined,
+        lockCode: data.lockCode ?? undefined,
       },
     });
-
     return NextResponse.json(updatedLock);
   } catch (error) {
     console.error("Error updating lock:", error);

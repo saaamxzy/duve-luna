@@ -82,6 +82,16 @@ interface ApiResponse {
   pagination: PaginationInfo;
 }
 
+function isApiResponse(data: unknown): data is ApiResponse {
+  if (typeof data !== "object" || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    Array.isArray(obj.reservations) &&
+    typeof obj.pagination === "object" &&
+    obj.pagination !== null
+  );
+}
+
 // Function to fetch a single page of reservations
 async function fetchReservationsPage(
   page: number,
@@ -132,7 +142,11 @@ async function fetchReservationsPage(
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
-  return response.json();
+  const data: unknown = await response.json();
+  if (!isApiResponse(data)) {
+    throw new Error("Invalid API response");
+  }
+  return data;
 }
 
 // Function to parse property name components
@@ -141,25 +155,25 @@ function parsePropertyName(propertyName: string): {
   roomNumber: string;
 } {
   // Extract street number (first numeric value)
-  const streetNumberMatch = propertyName.match(/^\d+/);
+  const streetNumberMatch = /^\d+/.exec(propertyName);
   const streetNumber = streetNumberMatch ? streetNumberMatch[0] : "";
 
   // Extract room number (value with #)
-  const roomNumberMatch = propertyName.match(/#\d+/);
+  const roomNumberMatch = /#\d+/.exec(propertyName);
   const roomNumber = roomNumberMatch ? roomNumberMatch[0] : "";
 
   return { streetNumber, roomNumber };
 }
 
 // Function to process a single reservation
-async function processReservation(reservation: Reservation) {
+async function processReservation(reservation: Reservation): Promise<void> {
   // Create or update the reservation
   const reservationData = {
     duveId: reservation._id,
     firstName: reservation.firstName,
     lastName: reservation.lastName,
-    email: reservation.email || null,
-    phoneNumber: reservation.phoneNumber || null,
+    email: reservation.email ?? null,
+    phoneNumber: reservation.phoneNumber ?? null,
     status: reservation.status,
     bookingStatus: reservation.bookingStatus,
     bookingSource: reservation.bookingSourceLabel,
@@ -171,11 +185,11 @@ async function processReservation(reservation: Reservation) {
     babies: reservation.babies,
     rentPrice: reservation.rentPrice,
     totalRentPrice: reservation.totalRentPrice,
-    currency: reservation.currency || null,
+    currency: reservation.currency ?? null,
     startDate: new Date(reservation.startDate),
     endDate: new Date(reservation.endDate),
-    estimatedCheckInTime: reservation.estimatedCheckInTime || null,
-    estimatedCheckOutTime: reservation.estimatedCheckOutTime || null,
+    estimatedCheckInTime: reservation.estimatedCheckInTime ?? null,
+    estimatedCheckOutTime: reservation.estimatedCheckOutTime ?? null,
 
     // Property information
     propertyId: reservation.property._id,
@@ -188,11 +202,11 @@ async function processReservation(reservation: Reservation) {
 
     // Precheckin information
     precheckinStatus: reservation.precheckin?.visited ? "visited" : null,
-    verifiedEmail: reservation.precheckin?.verifiedEmail || null,
-    verifiedPhone: reservation.precheckin?.verifiedPhone || null,
-    arrivalMethod: reservation.precheckin?.arrivalMethod || null,
-    passportUploaded: reservation.precheckin?.passportUploaded || false,
-    creditCardUploaded: reservation.precheckin?.creditCardUploaded || false,
+    verifiedEmail: reservation.precheckin?.verifiedEmail ?? null,
+    verifiedPhone: reservation.precheckin?.verifiedPhone ?? null,
+    arrivalMethod: reservation.precheckin?.arrivalMethod ?? null,
+    passportUploaded: reservation.precheckin?.passportUploaded ?? false,
+    creditCardUploaded: reservation.precheckin?.creditCardUploaded ?? false,
   };
 
   // Upsert the reservation
@@ -253,16 +267,16 @@ async function processReservation(reservation: Reservation) {
 
     // Create new guest profiles
     await db.guestProfile.createMany({
-      data: reservation.guestProfiles!.map((profile: GuestProfile) => ({
+      data: reservation.guestProfiles.map((profile: GuestProfile) => ({
         reservationId: savedReservation.id,
         duveGuestId: profile.gId,
-        email: profile.email || null,
-        firstName: profile.firstName || null,
-        lastName: profile.lastName || null,
-        phone: profile.phone || null,
-        isPrimary: profile.isPrimary || false,
+        email: profile.email ?? null,
+        firstName: profile.firstName ?? null,
+        lastName: profile.lastName ?? null,
+        phone: profile.phone ?? null,
+        isPrimary: profile.isPrimary ?? false,
         guestType: profile.guestType,
-        allowOptInMarketing: profile.allowOptInMarketing?.enabled || false,
+        allowOptInMarketing: profile.allowOptInMarketing?.enabled ?? false,
       })),
     });
   }
@@ -279,12 +293,12 @@ async function processReservation(reservation: Reservation) {
 
     // Create new documents
     await db.document.createMany({
-      data: reservation.uploadedDocuments!.map((doc: UploadedDocument) => ({
+      data: reservation.uploadedDocuments.map((doc: UploadedDocument) => ({
         reservationId: savedReservation.id,
         name: doc.name,
         uploadDate: new Date(doc.uploadDate),
         documentType: doc.dtype,
-        isSecureUpload: doc.isSecureUpload || false,
+        isSecureUpload: doc.isSecureUpload ?? false,
         duveDocumentId: doc._id,
       })),
     });
@@ -292,7 +306,7 @@ async function processReservation(reservation: Reservation) {
 }
 
 // Function that will be executed daily
-export async function dailyTask() {
+export async function dailyTask(): Promise<void> {
   try {
     console.log("Running daily task...");
 
@@ -334,7 +348,7 @@ export async function dailyTask() {
 // Schedule the task to run at midnight every day
 export function startDailyCron() {
   cron.schedule("0 0 * * *", () => {
-    dailyTask();
+    void dailyTask();
   });
 
   console.log("Daily cron job scheduled");
