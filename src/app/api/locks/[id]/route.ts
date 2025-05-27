@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "../../../../server/db";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest) {
   try {
+    // Extract the id param from the URL
+    const url = new URL(request.url);
+    const id = url.pathname.split("/").pop();
+
     const lock = await db.lockProfile.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!lock) {

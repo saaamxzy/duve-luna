@@ -207,33 +207,38 @@ async function processReservation(reservation: Reservation) {
     reservation.property.name,
   );
 
-  // Check if a LockProfile already exists for this property
-  const existingLockProfile = await db.lockProfile.findFirst({
-    where: {
-      fullPropertyName: reservation.property.name,
-      streetNumber,
-      roomNumber,
-    },
-  });
-
-  if (existingLockProfile) {
-    // Update the existing LockProfile to link it with this reservation
-    await db.lockProfile.update({
-      where: { id: existingLockProfile.id },
-      data: {
-        reservationId: savedReservation.id,
-      },
-    });
-  } else {
-    // Create a new LockProfile
-    await db.lockProfile.create({
-      data: {
-        fullPropertyName: reservation.property.name,
+  try {
+    // Check if a LockProfile already exists for this property
+    const existingLockProfile = await db.lockProfile.findFirst({
+      where: {
         streetNumber,
         roomNumber,
-        reservationId: savedReservation.id,
       },
     });
+
+    if (existingLockProfile) {
+      // Update the existing LockProfile to link it with this reservation
+      await db.lockProfile.update({
+        where: { id: existingLockProfile.id },
+        data: {
+          reservationId: savedReservation.id,
+          fullPropertyName: reservation.property.name,
+        },
+      });
+    } else {
+      // Create a new LockProfile
+      await db.lockProfile.create({
+        data: {
+          fullPropertyName: reservation.property.name,
+          streetNumber,
+          roomNumber,
+          reservationId: savedReservation.id,
+        },
+      });
+    }
+  } catch (error) {
+    console.error("Error processing LockProfile:", error);
+    // Continue processing other data even if LockProfile creation fails
   }
 
   // Process guest profiles
