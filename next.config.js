@@ -5,6 +5,14 @@
 import "./src/env.cjs";
 
 /** @type {import("next").NextConfig} */
-const config = {};
+const config = {
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "~": "./src",
+    };
+    return config;
+  },
+};
 
 export default config;

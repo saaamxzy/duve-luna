@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { db } from "../db";
-import { env } from "~/env";
+import { env } from "../../env.cjs";
 
 // --- Types based on Duve API response ---
 interface GuestProfile {
