@@ -18,3 +18,107 @@ model Post {
 
     @@index([name])
 }
+
+model Reservation {
+    id                String   @id @default(cuid())
+    duveId           String   @unique // _id from Duve
+    firstName        String
+    lastName         String
+    email            String?
+    phoneNumber      String?
+    status           String   // beforeCheckIn, preCheckedIn, etc.
+    bookingStatus    String   // Reserved, etc.
+    bookingSource    String   // Airbnb, etc.
+    externalId       String?  // External booking ID
+    airbnbExternalId String?  // Airbnb specific ID
+    code             String?  // Check-in code
+    adults           Int
+    children         Int
+    babies           Int
+    rentPrice        Float
+    totalRentPrice   Float
+    currency         String?
+    startDate        DateTime
+    endDate          DateTime
+    estimatedCheckInTime  String?
+    estimatedCheckOutTime String?
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // Property information
+    propertyId       String
+    propertyName     String
+    propertyStreet   String
+    propertyStreetNumber String
+    propertyCity     String
+    propertyStatus   String
+    propertyTags     String[]
+
+    // Precheckin information
+    precheckinStatus String?  // visited, verified, etc.
+    verifiedEmail    String?
+    verifiedPhone    String?
+    arrivalMethod    String?
+    passportUploaded Boolean  @default(false)
+    creditCardUploaded Boolean @default(false)
+
+    // Guest profiles
+    guestProfiles    GuestProfile[]
+
+    // Documents
+    documents        Document[]
+
+    // Lock profiles
+    lockProfiles    LockProfile[]
+}
+
+model GuestProfile {
+    id                String   @id @default(cuid())
+    reservationId     String
+    reservation       Reservation @relation(fields: [reservationId], references: [id])
+    duveGuestId       String   // gId from Duve
+    email             String?
+    firstName         String?
+    lastName          String?
+    phone             String?
+    isPrimary         Boolean  @default(false)
+    guestType         Int
+    allowOptInMarketing Boolean @default(false)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+}
+
+model Document {
+    id                String   @id @default(cuid())
+    reservationId     String
+    reservation       Reservation @relation(fields: [reservationId], references: [id])
+    name              String
+    uploadDate        DateTime
+    documentType      String   // dtype from Duve
+    isSecureUpload    Boolean  @default(false)
+    duveDocumentId    String   // _id from Duve
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+}
+
+model LockProfile {
+    id          String   @id @default(cuid())
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    // Property name components
+    fullPropertyName String
+    streetNumber    String
+    roomNumber      String
+
+    // Lock information
+    lockId          String?  // Optional as it will be entered manually later
+    lockCode        String?  // Optional as it will be generated later
+
+    // Optional relationship with Reservation
+    reservation     Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+    reservationId   String?
+
+    @@unique([streetNumber, roomNumber])
+    @@index([reservationId])
+}

@@ -11,6 +11,8 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+    DUVE_CSRF_TOKEN: z.string(),
+    DUVE_SESSION_ID: z.string(),
   },
 
   /**
@@ -29,6 +31,8 @@ export const env = createEnv({
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,
+    DUVE_CSRF_TOKEN: process.env.DUVE_CSRF_TOKEN,
+    DUVE_SESSION_ID: process.env.DUVE_SESSION_ID,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**
