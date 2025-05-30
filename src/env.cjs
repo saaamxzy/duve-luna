@@ -13,6 +13,7 @@ const env = createEnv({
       .default("development"),
     DUVE_CSRF_TOKEN: z.string(),
     DUVE_SESSION_ID: z.string(),
+    DUVE_COOKIE: z.string(),
   },
 
   /**
@@ -33,6 +34,7 @@ const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     DUVE_CSRF_TOKEN: process.env.DUVE_CSRF_TOKEN,
     DUVE_SESSION_ID: process.env.DUVE_SESSION_ID,
+    DUVE_COOKIE: process.env.DUVE_COOKIE,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**

@@ -92,6 +92,21 @@ function isApiResponse(data: unknown): data is ApiResponse {
   );
 }
 
+// Add at the top of the file, after imports
+const TEST_MODE = false; // Set to false in production
+const TEST_STREET_NUMBER = "800";
+const TEST_FIRST_NAME = "Sam";
+const TEST_LAST_NAME = "X";
+
+// Function to check if reservation is test data
+function isTestData(reservation: Reservation): boolean {
+  return (
+    reservation.property.streetNumber === TEST_STREET_NUMBER &&
+    reservation.firstName === TEST_FIRST_NAME &&
+    reservation.lastName === TEST_LAST_NAME
+  );
+}
+
 // Function to fetch a single page of reservations
 async function fetchReservationsPage(
   page: number,
@@ -154,14 +169,195 @@ function parsePropertyName(propertyName: string): {
   streetNumber: string;
   lockName: string;
 } {
-  // Extract street number (first numeric value)
-  const streetNumberMatch = /^\d+/.exec(propertyName);
-  const streetNumber = streetNumberMatch ? streetNumberMatch[0] : "";
-
-  // Extract lock name (everything after the street number)
-  const lockName = propertyName.replace(/^\d+\s*/, "").trim();
-
+  // Improved regex: capture street number and next token (word/code) after street number
+  const match = propertyName.match(/^(\d+)\s*(?:-\s*)?([^\s-]+)/);
+  const streetNumber = (match && match[1]) ? match[1] : "";
+  const lockName = (match && match[2]) ? match[2] : "";
   return { streetNumber, lockName };
+}
+
+// Function to generate a random 4-digit code
+function generateLockCode(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Function to update Duve reservation with the new lock code
+async function updateDuveReservationCode(duveId: string, code: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://frontdesk.duve.com/api/reservations/${duveId}`, {
+      method: 'PUT',
+      headers: {
+        'accept': 'application/json',
+        'accept-language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+        'cache-control': 'no-cache',
+        'content-type': 'application/json',
+        'origin': 'https://frontdesk.duve.com',
+        'pragma': 'no-cache',
+        'priority': 'u=1, i',
+        'referer': `https://frontdesk.duve.com/reservations/${duveId}`,
+        'sec-ch-ua': '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"macOS"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+        'x-csrftoken': env.DUVE_CSRF_TOKEN,
+        'cookie': env.DUVE_COOKIE
+      },
+      body: JSON.stringify({
+        mode: true,
+        aptC: `${code}#`
+      })
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error(`[Duve] Failed to update reservation code for ${duveId}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        response: responseText
+      });
+      return false;
+    }
+
+    if (TEST_MODE) {
+      console.log(`[Duve] Successfully updated reservation code for ${duveId} to ${code}#`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[Duve] Error updating reservation code for ${duveId}:`, error);
+    return false;
+  }
+}
+
+// Function to update lock code via API
+async function updateLockCode(lockId: string, newCode: string, startDate: Date, endDate: Date, duveId: string): Promise<boolean> {
+  try {
+    // Find the LockProfile and its keyboard passwords
+    const lockProfile = await db.lockProfile.findFirst({
+      where: { lockId },
+      include: {
+        keyboardPasswords: {
+          where: {
+            keyboardPwdName: {
+              in: ["Guest Code 1", "Guest Code 2"]
+            },
+            status: 1, // Active passwords only
+            startDate: {
+              not: null // Must have a start date
+            }
+          },
+          orderBy: {
+            startDate: 'asc' // Get the oldest one
+          },
+          take: 1
+        }
+      }
+    });
+
+    if (!lockProfile) {
+      console.error(`[LockProfile] No LockProfile found for lockId ${lockId}`);
+      return false;
+    }
+
+    const keyboardPassword = lockProfile.keyboardPasswords[0];
+    if (!keyboardPassword) {
+      console.error(`[LockProfile] No active Guest Code found for lockId ${lockId}`);
+      return false;
+    }
+
+    // Set specific times for check-in (3 PM) and check-out (11 AM) in UTC
+    // Adjusting for the timezone difference (UTC-4 for EDT)
+    const checkInTime = new Date(startDate);
+    checkInTime.setUTCHours(19, 0, 0, 0); // 3 PM EDT = 19:00 UTC
+
+    const checkOutTime = new Date(endDate);
+    checkOutTime.setUTCHours(15, 0, 0, 0); // 11 AM EDT = 15:00 UTC
+
+    if (TEST_MODE) {
+      console.log(`[LockProfile] Test Mode - Details for lockId ${lockId}:`);
+      console.log(`- Keyboard Password ID: ${keyboardPassword.keyboardPwdId}`);
+      console.log(`- Current Password: ${keyboardPassword.keyboardPwd}`);
+      console.log(`- Password Name: ${keyboardPassword.keyboardPwdName}`);
+      console.log(`- Start Date: ${new Date(keyboardPassword.startDate!).toISOString()}`);
+      console.log(`- End Date: ${new Date(keyboardPassword.endDate!).toISOString()}`);
+      console.log(`- New Code: ${newCode}`);
+      console.log(`- New Start Date: ${checkInTime.toISOString()}`);
+      console.log(`- New End Date: ${checkOutTime.toISOString()}`);
+    }
+
+    const response = await fetch("https://pro-server.sifely.com/v3/keyboardPwd/change", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+        "Authorization": "Bearer eyJhbGciOiJIUzUxMiJ9.eyJjbGllbnRfaWQiOm51bGwsImxvZ2luX3VzZXJfa2V5IjoiMWYxYTU4MGMtMjZkNi00ZTJhLThhMzQtMmFmZGYzMTcxZjQ1In0.iR80jf1HnZ77OyT5BciK0c3LvzEqBVAAug6cuM8OzzUNOnIikMIueJhWsd7QUIqIxiqENdbHFzozvFSjxg0tKw",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://manager.sifely.com",
+        "Pragma": "no-cache",
+        "Referer": "https://manager.sifely.com/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "sec-ch-ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"'
+      },
+      body: new URLSearchParams({
+        changeType: "2",
+        keyboardPwdName: keyboardPassword.keyboardPwdName, // Use the same name as the password we're updating
+        newKeyboardPwd: newCode,
+        lockId: lockId,
+        keyboardPwdId: keyboardPassword.keyboardPwdId.toString(),
+        date: Date.now().toString(),
+        startDate: checkInTime.getTime().toString(),
+        endDate: checkOutTime.getTime().toString()
+      }).toString()
+    });
+
+    const data = await response.json();
+    
+    if (TEST_MODE) {
+      console.log(`[LockProfile] Test Mode - API Response for lockId ${lockId}:`);
+      console.log(JSON.stringify(data, null, 2));
+    }
+    
+    if (data.code !== 200) {
+      console.error(`[LockProfile] API Error for lockId ${lockId}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        response: data
+      });
+      return false;
+    }
+
+    // Update the KeyboardPassword record in the database
+    await db.keyboardPassword.update({
+      where: { keyboardPwdId: keyboardPassword.keyboardPwdId },
+      data: {
+        keyboardPwd: newCode,
+        startDate: checkInTime,
+        endDate: checkOutTime
+      }
+    });
+
+    // Update the Duve reservation with the new code
+    const duveUpdateSuccess = await updateDuveReservationCode(duveId, newCode);
+    if (!duveUpdateSuccess) {
+      console.error(`[LockProfile] Failed to update Duve reservation code for ${duveId}`);
+      // We still return true since the lock code was updated successfully
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[LockProfile] Error updating lock code for lockId ${lockId}:`, error);
+    return false;
+  }
 }
 
 // Function to process a single reservation
@@ -211,8 +407,16 @@ async function processReservation(reservation: Reservation): Promise<void> {
   // Upsert the reservation
   const savedReservation = await db.reservation.upsert({
     where: { duveId: reservation._id },
-    create: reservationData,
-    update: reservationData,
+    create: {
+      ...reservationData,
+      bookingStatus: reservation.bookingStatus || "unknown",
+      bookingSource: reservation.bookingSourceLabel || "unknown",
+    },
+    update: {
+      ...reservationData,
+      bookingStatus: reservation.bookingStatus || "unknown",
+      bookingSource: reservation.bookingSourceLabel || "unknown",
+    },
   });
 
   // Parse property name and create/update LockProfile
@@ -221,7 +425,7 @@ async function processReservation(reservation: Reservation): Promise<void> {
   );
 
   try {
-    // Check if a LockProfile already exists for this property
+    // Find the corresponding LockProfile
     const existingLockProfile = await db.lockProfile.findFirst({
       where: {
         streetNumber,
@@ -238,19 +442,78 @@ async function processReservation(reservation: Reservation): Promise<void> {
           fullPropertyName: reservation.property.name,
         },
       });
+
+      if (existingLockProfile.lockId) {
+        // Check if we should update this lock code
+        const shouldUpdate = !TEST_MODE || isTestData(reservation);
+        
+        if (shouldUpdate) {
+          // Generate new lock code and update via API
+          const newLockCode = generateLockCode();
+          const updateSuccess = await updateLockCode(
+            existingLockProfile.lockId, 
+            newLockCode,
+            new Date(reservation.startDate),
+            new Date(reservation.endDate),
+            reservation._id
+          );
+
+          if (updateSuccess) {
+            // Update both LockProfile and Reservation with the new lock code
+            await db.lockProfile.update({
+              where: { id: existingLockProfile.id },
+              data: {
+                lockCode: `#${newLockCode}`,
+              },
+            });
+
+            await db.reservation.update({
+              where: { id: savedReservation.id },
+              data: {
+                lockId: existingLockProfile.lockId,
+              },
+            });
+
+            console.log(
+              `[LockProfile] Successfully updated lock code for reservation ${savedReservation.id} (lockId: ${existingLockProfile.lockId}, new code: #${newLockCode})`
+            );
+          } else {
+            console.error(
+              `[LockProfile] Failed to update lock code for reservation ${savedReservation.id} (lockId: ${existingLockProfile.lockId})`
+            );
+          }
+        } else {
+          console.log(
+            `[LockProfile] Skipping lock code update for non-test data: ${reservation.property.name} (${reservation.firstName} ${reservation.lastName})`
+          );
+        }
+      } else {
+        // LockProfile found but lockId is missing
+        await db.reservation.update({
+          where: { id: savedReservation.id },
+          data: {
+            lockId: null,
+          },
+        });
+        console.warn(
+          `[LockProfile] WARNING: LockProfile found for property '${reservation.property.name}' (streetNumber: '${streetNumber}', lockName: '${lockName}') but lockId is missing. Reservation ${savedReservation.id} set to lockId=null.`
+        );
+      }
     } else {
-      // Create a new LockProfile
-      await db.lockProfile.create({
+      // No LockProfile found for this property
+      await db.reservation.update({
+        where: { id: savedReservation.id },
         data: {
-          fullPropertyName: reservation.property.name,
-          streetNumber,
-          lockName,
-          reservationId: savedReservation.id,
+          lockId: null,
         },
       });
+      console.warn(
+        `[LockProfile] WARNING: No LockProfile found for property '${reservation.property.name}' (streetNumber: '${streetNumber}', lockName: '${lockName}'). Reservation ${savedReservation.id} set to lockId=null.`
+      );
+      // Optionally, create a new LockProfile here if desired
     }
   } catch (error) {
-    console.error("Error processing LockProfile:", error);
+    console.error(`[LockProfile] ERROR processing LockProfile for reservation ${savedReservation.id} (property: '${reservation.property.name}', streetNumber: '${streetNumber}', lockName: '${lockName}'):`, error);
     // Continue processing other data even if LockProfile creation fails
   }
 

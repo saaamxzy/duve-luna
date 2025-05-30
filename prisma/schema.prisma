@@ -62,6 +62,9 @@ model Reservation {
     passportUploaded Boolean  @default(false)
     creditCardUploaded Boolean @default(false)
 
+    // Lock information
+    lockId           String?  // ID of the associated lock
+
     // Guest profiles
     guestProfiles    GuestProfile[]
 
@@ -119,6 +122,36 @@ model LockProfile {
     reservation     Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
     reservationId   String?
 
+    // Keyboard passwords
+    keyboardPasswords KeyboardPassword[]
+
     @@unique([streetNumber, lockName])
     @@index([reservationId])
+}
+
+model KeyboardPassword {
+    id                String   @id @default(cuid())
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // API fields
+    keyboardPwdId    Int      @unique  // ID from the lock API
+    keyboardPwdName  String   // e.g., "Guest Code 1", "Cleaning"
+    keyboardPwd      String   // The actual code
+    keyboardPwdType  Int      // Type of password
+    keyboardPwdVersion Int    // Version of the password
+    startDate        DateTime?
+    endDate          DateTime?
+    sendDate         DateTime
+    status           Int      // Status of the password
+    isCustom         Boolean
+    nickName         String
+    senderUsername   String
+    receiverUsername String?
+
+    // Relationship with LockProfile
+    lockProfile      LockProfile @relation(fields: [lockProfileId], references: [id], onDelete: Cascade)
+    lockProfileId    String
+
+    @@index([lockProfileId])
 }

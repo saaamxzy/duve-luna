@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import type { LockProfile } from "@prisma/client";
 
 interface LocksApiResponse {
@@ -164,7 +165,18 @@ export default function LocksPage() {
                     <td className="px-4 py-2 border">{lock.fullPropertyName}</td>
                     <td className="px-4 py-2 border">{lock.streetNumber}</td>
                     <td className="px-4 py-2 border">{lock.lockName}</td>
-                    <td className="px-4 py-2 border">{lock.lockId ?? "-"}</td>
+                    <td className="px-4 py-2 border">
+                      {lock.lockId ? (
+                        <Link
+                          href={`/locks/${lock.id}`}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {lock.lockId}
+                        </Link>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                     <td className="px-4 py-2 border">{lock.lockCode ?? "-"}</td>
                     <td className="px-4 py-2 border">
                       <button

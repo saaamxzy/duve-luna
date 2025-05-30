@@ -37,30 +37,30 @@ function isLockProfileUpdate(data: unknown): data is LockProfileUpdate {
   return true;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    // Extract the id param from the URL
-    const url = new URL(request.url);
-    const id = url.pathname.split("/").pop();
-
     const lock = await db.lockProfile.findUnique({
-      where: { id: id ?? undefined },
+      where: { id: params.id },
+      include: {
+        keyboardPasswords: {
+          orderBy: {
+            startDate: 'desc'
+          }
+        }
+      }
     });
 
     if (!lock) {
-      return NextResponse.json(
-        { error: "Lock not found" },
-        { status: 404 }
-      );
+      return new NextResponse("Lock not found", { status: 404 });
     }
 
-    return NextResponse.json(lock);
+    return NextResponse.json({ lock });
   } catch (error) {
-    console.error("Error fetching lock:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch lock" },
-      { status: 500 }
-    );
+    console.error("Error fetching lock details:", error);
+    return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
 
