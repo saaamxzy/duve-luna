@@ -91,8 +91,7 @@ async function fetchLocks(page: number): Promise<ApiResponse> {
     headers: {
       Accept: "application/json, text/plain, */*",
       "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-      Authorization:
-        "Bearer eyJhbGciOiJIUzUxMiJ9.eyJjbGllbnRfaWQiOm51bGwsImxvZ2luX3VzZXJfa2V5IjoiYjZmNmRmNTUtMzIzNS00OWEzLWJlOTktMWMzYWM3ZWE2M2Q4In0.xwDxzUE8qt9F1EkoNs4SYOshKIbKTTgTDUc1GIFuQadTQaeTDsNUmE27WygIZFrcN2nQqKrL-0K3mMJMNyx7JA",
+      Authorization: process.env.SIFELY_AUTH_TOKEN as string,
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       "Content-Type": "application/x-www-form-urlencoded",

@@ -14,6 +14,7 @@ const env = createEnv({
     DUVE_CSRF_TOKEN: z.string(),
     DUVE_SESSION_ID: z.string(),
     DUVE_COOKIE: z.string(),
+    SIFELY_AUTH_TOKEN: z.string(),
   },
 
   /**
@@ -35,6 +36,7 @@ const env = createEnv({
     DUVE_CSRF_TOKEN: process.env.DUVE_CSRF_TOKEN,
     DUVE_SESSION_ID: process.env.DUVE_SESSION_ID,
     DUVE_COOKIE: process.env.DUVE_COOKIE,
+    SIFELY_AUTH_TOKEN: process.env.SIFELY_AUTH_TOKEN,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**

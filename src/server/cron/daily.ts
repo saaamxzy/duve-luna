@@ -147,8 +147,7 @@ async function fetchReservationsPage(
       "user-agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
       "x-csrftoken": env.DUVE_CSRF_TOKEN,
-      cookie:
-        "_gcl_aw=GCL.1748200928.Cj0KCQjw_8rBBhCFARIsAJrc9yDaUYos20Zma24pNwYq73ckItWOEKIu2KqL-xy9f2E_Q7JFnuNz6gUaAoxfEALw_wcB; _gcl_gs=2.1.k1$i1748200925$u214572802; utmSource=google; utmMedium=cpc; utmCampaign=gsn_brand_duve_row; utmContent=Duve_Exact; utmTerm=duve; adClid=Cj0KCQjw_8rBBhCFARIsAJrc9yDaUYos20Zma24pNwYq73ckItWOEKIu2KqL-xy9f2E_Q7JFnuNz6gUaAoxfEALw_wcB; tl=2025-05-25T19:22:07.928Z; tz=America/New_York; lang=en-US; langs=en-US,en,zh-CN; _cq_duid=1.1748200928.5pyJ7Px2FRICsWuO; _cq_suid=1.1748200928.1KGw1KNPDPcTbWeK; _cq_pxg=3|j3161507558303027443633; _clck=haq8rp%7C2%7Cfw7%7C0%7C1971; _clsk=b3d9hl%7C1748200929441%7C1%7C1%7Ce.clarity.ms%2Fcollect; _uetsid=8e05ef20399d11f0bd39d5c9651c976b; _uetvid=8e0602b0399d11f0a9e191ab07b1f4c1; ttcsid_CN4DLD3C77UBB5H8U98G=1748200931572::zJIjtruAiyQ_wEcyU5j5.1.1748200931572; AMP_MKTG_092b5aadda=JTdCJTIycmVmZXJyZXIlMjIlM0ElMjJodHRwcyUzQSUyRiUyRnd3dy5nb29nbGUuY29tJTJGJTIyJTJDJTIycmVmZXJyaW5nX2RvbWFpbiUyMiUzQSUyMnd3dy5nb29nbGUuY29tJTIyJTdE; AMP_092b5aadda=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjI0N2I2YTlmOS0zNTBlLTQ4N2QtYjI3Mi1jODcyYzBmOTQwNGQlMjIlMkMlMjJzZXNzaW9uSWQlMjIlM0ExNzQ4MjAwOTM3ODc5JTJDJTIyb3B0T3V0JTIyJTNBZmFsc2UlMkMlMjJsYXN0RXZlbnRUaW1lJTIyJTNBMTc0ODIwMTIzNDU3NiUyQyUyMmxhc3RFdmVudElkJTIyJTNBMTQlMkMlMjJwYWdlQ291bnRlciUyMiUzQTIlN0Q=; AMP_MKTG_17fe4404b5=JTdCJTdE; sessionId=s%3AifGXRn18Bj8-PgFoZ9_zvcqjDHQIhX7q.7Kx4cMuOYn0tJGRxp98jbtYKtN7bN71Ou1lpELsReuc; intercom-device-id-y11fhiqs=611b8092-adc2-4da3-9489-0ae3685b3f27; _fbp=fb.1.1748201410225.74380699615892536; _hjSessionUser_766045=eyJpZCI6IjhjMzhmYmRkLTkxZDktNWQzNi1iODAzLTJjNTA1ODRjMjcyMCIsImNyZWF0ZWQiOjE3NDgyMDE0MTAzNjcsImV4aXN0aW5nIjpmYWxzZX0=; _hjSession_766045=eyJpZCI6IjYzZTFhOWNiLTU1NjQtNDhlOC1iZDAzLTcwOTdlYTA0MzU4OSIsImMiOjE3NDgyMDE0MTAzNjcsInMiOjAsInIiOjAsInNiIjowLCJzciI6MCwic2UiOjAsImZzIjoxLCJzcCI6MH0=; _hjHasCachedUserAttributes=true; intercom-session-y11fhiqs=UytaRUFwUnpUc0R3SWNtc0c3dnFiS0hSVmhuK0N3djhRZnZ6aXJxaEhCOXBpcENVWlRKeHVHOXRVZFNabmNkbm1wb0x0ZFZtN2ZGMTMrbE5wakxFSHo3UStLRjl1NkY4RjlDc2xmVVFreFk9LS1nYkhsM1FEVGZKSGRCTGE0NmJ2YUdBPT0=--0f54ee94152bf919aee25993e0d7950c4a7b0f57; AMP_17fe4404b5=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjJlNzk4MTIwNi02ZWI0LTQzNGItYjFhNS1iZWRjMDRmNzc1ZDUlMjIlMkMlMjJ1c2VySWQlMjIlM0ElMjJsdW5haG9zcGl0YWxpdHltZ210JTQwZ21haWwuY29tJTIyJTJDJTIyc2Vzc2lvbklkJTIyJTNBMTc0ODIwMTMwOTIyNSUyQyUyMm9wdE91dCUyMiUzQWZhbHNlJTJDJTIybGFzdEV2ZW50VGltZSUyMiUzQTE3NDgyMDMxNjc3NjclMkMlMjJsYXN0RXZlbnRJZCUyMiUzQTU5JTJDJTIycGFnZUNvdW50ZXIlMjIlM0EzNCU3RA==; csrftoken=W75o4oiHFhCYP%2BgIw3xc9MmLDustj3GK6hiTM%3D",
+      cookie: env.DUVE_COOKIE,
     },
     credentials: "include",
   });
@@ -161,7 +160,8 @@ async function fetchReservationsPage(
   if (!isApiResponse(data)) {
     throw new Error("Invalid API response");
   }
-  return data;
+  const typedData: ApiResponse = data;
+  return typedData;
 }
 
 // Function to parse property name components
@@ -170,9 +170,10 @@ function parsePropertyName(propertyName: string): {
   lockName: string;
 } {
   // Improved regex: capture street number and next token (word/code) after street number
-  const match = propertyName.match(/^(\d+)\s*(?:-\s*)?([^\s-]+)/);
-  const streetNumber = (match && match[1]) ? match[1] : "";
-  const lockName = (match && match[2]) ? match[2] : "";
+  const regex = /^(\d+)\s*(?:-\s*)?([^\s-]+)/;
+  const match = regex.exec(propertyName);
+  const streetNumber = match?.[1] ?? "";
+  const lockName = match?.[2] ?? "";
   return { streetNumber, lockName };
 }
 
@@ -242,7 +243,7 @@ async function updateLockCode(lockId: string, newCode: string, startDate: Date, 
         keyboardPasswords: {
           where: {
             keyboardPwdName: {
-              in: ["Guest Code 1", "Guest Code 2"]
+              in: ["Guest Code 1", "Guest Code 2"].map(code => code.toLowerCase())
             },
             status: 1, // Active passwords only
             startDate: {
@@ -293,7 +294,7 @@ async function updateLockCode(lockId: string, newCode: string, startDate: Date, 
       headers: {
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-        "Authorization": "Bearer eyJhbGciOiJIUzUxMiJ9.eyJjbGllbnRfaWQiOm51bGwsImxvZ2luX3VzZXJfa2V5IjoiMWYxYTU4MGMtMjZkNi00ZTJhLThhMzQtMmFmZGYzMTcxZjQ1In0.iR80jf1HnZ77OyT5BciK0c3LvzEqBVAAug6cuM8OzzUNOnIikMIueJhWsd7QUIqIxiqENdbHFzozvFSjxg0tKw",
+        "Authorization": env.SIFELY_AUTH_TOKEN,
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -320,18 +321,20 @@ async function updateLockCode(lockId: string, newCode: string, startDate: Date, 
       }).toString()
     });
 
-    const data = await response.json();
+    const data: unknown = await response.json();
+    // Add explicit type for API response
+    const apiResponse = data as { code: number; [key: string]: unknown };
     
     if (TEST_MODE) {
       console.log(`[LockProfile] Test Mode - API Response for lockId ${lockId}:`);
-      console.log(JSON.stringify(data, null, 2));
+      console.log(JSON.stringify(apiResponse, null, 2));
     }
     
-    if (data.code !== 200) {
+    if (apiResponse.code !== 200) {
       console.error(`[LockProfile] API Error for lockId ${lockId}:`, {
         status: response.status,
         statusText: response.statusText,
-        response: data
+        response: apiResponse
       });
       return false;
     }

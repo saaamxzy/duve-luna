@@ -35,7 +35,7 @@ async function fetchKeyboardPasswords(lockId: string, page: number): Promise<Api
     headers: {
       "Accept": "application/json, text/plain, */*",
       "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-      "Authorization": "Bearer eyJhbGciOiJIUzUxMiJ9.eyJjbGllbnRfaWQiOm51bGwsImxvZ2luX3VzZXJfa2V5IjoiMWYxYTU4MGMtMjZkNi00ZTJhLThhMzQtMmFmZGYzMTcxZjQ1In0.iR80jf1HnZ77OyT5BciK0c3LvzEqBVAAug6cuM8OzzUNOnIikMIueJhWsd7QUIqIxiqENdbHFzozvFSjxg0tKw",
+      "Authorization": process.env.SIFELY_AUTH_TOKEN as string,
       "Cache-Control": "no-cache",
       "Connection": "keep-alive",
       "Content-Type": "application/x-www-form-urlencoded",

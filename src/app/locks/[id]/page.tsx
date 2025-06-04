@@ -12,12 +12,10 @@ interface LockDetailResponse {
 
 function isLockDetailResponse(data: unknown): data is LockDetailResponse {
   if (typeof data !== "object" || data === null) return false;
-  const obj = data as Record<string, unknown>;
-  return (
-    typeof obj.lock === "object" &&
-    obj.lock !== null &&
-    Array.isArray((obj.lock as any).keyboardPasswords)
-  );
+  const obj = data as { lock?: unknown };
+  if (!obj.lock || typeof obj.lock !== "object" || obj.lock === null) return false;
+  const lock = obj.lock as { keyboardPasswords?: unknown };
+  return Array.isArray(lock.keyboardPasswords);
 }
 
 export default function LockDetailPage() {
@@ -28,7 +26,7 @@ export default function LockDetailPage() {
   useEffect(() => {
     const fetchLockDetail = async () => {
       try {
-        const response = await fetch(`/api/locks/${params.id}`);
+        const response = await fetch(`/api/locks/${encodeURIComponent(String(params.id))}`);
         const data: unknown = await response.json();
         if (isLockDetailResponse(data)) {
           setLock(data.lock);
@@ -97,7 +95,7 @@ export default function LockDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {lock.keyboardPasswords.map((password) => (
+              {lock.keyboardPasswords.map((password: KeyboardPassword) => (
                 <tr key={password.keyboardPwdId} className="hover:bg-gray-50">
                   <td className="px-4 py-2 border">{password.keyboardPwdName}</td>
                   <td className="px-4 py-2 border">{password.keyboardPwd}</td>

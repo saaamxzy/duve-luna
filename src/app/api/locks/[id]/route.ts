@@ -37,13 +37,16 @@ function isLockProfileUpdate(data: unknown): data is LockProfileUpdate {
   return true;
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function GET(request: NextRequest) {
   try {
+    // Extract the id param from the URL
+    const url = new URL(request.url);
+    const id = url.pathname.split("/").pop();
+    if (!id) {
+      return new NextResponse("Missing lock id", { status: 400 });
+    }
     const lock = await db.lockProfile.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         keyboardPasswords: {
           orderBy: {
