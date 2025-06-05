@@ -243,7 +243,7 @@ async function updateLockCode(lockId: string, newCode: string, startDate: Date, 
         keyboardPasswords: {
           where: {
             keyboardPwdName: {
-              in: ["Guest Code 1", "Guest Code 2"].map(code => code.toLowerCase())
+              in: ["Guest Code 1", "Guest Code 2", "Guest code 1", "Guest code 2", "guest code 1", "guest code 2"]
             },
             status: 1, // Active passwords only
             startDate: {
