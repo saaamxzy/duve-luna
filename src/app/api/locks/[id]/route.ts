@@ -50,10 +50,10 @@ export async function GET(request: NextRequest) {
       include: {
         keyboardPasswords: {
           orderBy: {
-            startDate: 'desc'
-          }
-        }
-      }
+            startDate: "desc",
+          },
+        },
+      },
     });
 
     if (!lock) {
@@ -76,17 +76,14 @@ export async function PUT(request: NextRequest) {
     if (!isLockProfileUpdate(data)) {
       return NextResponse.json(
         { error: "Invalid request body" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     // Validate lock code format if provided
-    if (
-      typeof data.lockCode === "string" &&
-      !/^#\d{4}$/.exec(data.lockCode)
-    ) {
+    if (typeof data.lockCode === "string" && !/^#\d{4}$/.exec(data.lockCode)) {
       return NextResponse.json(
         { error: "Lock code must start with # followed by 4 digits" },
-        { status: 400 }
+        { status: 400 },
       );
     }
     const updatedLock = await db.lockProfile.update({
@@ -102,7 +99,7 @@ export async function PUT(request: NextRequest) {
     console.error("Error updating lock:", error);
     return NextResponse.json(
       { error: "Failed to update lock" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

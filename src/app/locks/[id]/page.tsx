@@ -13,7 +13,8 @@ interface LockDetailResponse {
 function isLockDetailResponse(data: unknown): data is LockDetailResponse {
   if (typeof data !== "object" || data === null) return false;
   const obj = data as { lock?: unknown };
-  if (!obj.lock || typeof obj.lock !== "object" || obj.lock === null) return false;
+  if (!obj.lock || typeof obj.lock !== "object" || obj.lock === null)
+    return false;
   const lock = obj.lock as { keyboardPasswords?: unknown };
   return Array.isArray(lock.keyboardPasswords);
 }
@@ -26,7 +27,9 @@ export default function LockDetailPage() {
   useEffect(() => {
     const fetchLockDetail = async () => {
       try {
-        const response = await fetch(`/api/locks/${encodeURIComponent(String(params.id))}`);
+        const response = await fetch(
+          `/api/locks/${encodeURIComponent(String(params.id))}`,
+        );
         const data: unknown = await response.json();
         if (isLockDetailResponse(data)) {
           setLock(data.lock);
@@ -54,8 +57,8 @@ export default function LockDetailPage() {
   return (
     <div className="p-4">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-4">Lock Details</h1>
-        <div className="bg-white p-4 rounded-lg shadow">
+        <h1 className="mb-4 text-2xl font-bold">Lock Details</h1>
+        <div className="rounded-lg bg-white p-4 shadow">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-gray-600">Property Name</p>
@@ -82,36 +85,38 @@ export default function LockDetailPage() {
       </div>
 
       <div>
-        <h2 className="text-xl font-bold mb-4">Keyboard Passwords</h2>
+        <h2 className="mb-4 text-xl font-bold">Keyboard Passwords</h2>
         <div className="overflow-x-auto">
-          <table className="min-w-full bg-white border border-gray-200">
+          <table className="min-w-full border border-gray-200 bg-white">
             <thead>
               <tr className="bg-gray-100">
-                <th className="px-4 py-2 border">Password Name</th>
-                <th className="px-4 py-2 border">Password</th>
-                <th className="px-4 py-2 border">Status</th>
-                <th className="px-4 py-2 border">Start Date</th>
-                <th className="px-4 py-2 border">End Date</th>
+                <th className="border px-4 py-2">Password Name</th>
+                <th className="border px-4 py-2">Password</th>
+                <th className="border px-4 py-2">Status</th>
+                <th className="border px-4 py-2">Start Date</th>
+                <th className="border px-4 py-2">End Date</th>
               </tr>
             </thead>
             <tbody>
               {lock.keyboardPasswords.map((password: KeyboardPassword) => (
                 <tr key={password.keyboardPwdId} className="hover:bg-gray-50">
-                  <td className="px-4 py-2 border">{password.keyboardPwdName}</td>
-                  <td className="px-4 py-2 border">{password.keyboardPwd}</td>
-                  <td className="px-4 py-2 border">
+                  <td className="border px-4 py-2">
+                    {password.keyboardPwdName}
+                  </td>
+                  <td className="border px-4 py-2">{password.keyboardPwd}</td>
+                  <td className="border px-4 py-2">
                     {password.status === 1 ? (
                       <span className="text-green-600">Active</span>
                     ) : (
                       <span className="text-red-600">Inactive</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 border">
+                  <td className="border px-4 py-2">
                     {password.startDate
                       ? new Date(password.startDate).toLocaleString()
                       : "-"}
                   </td>
-                  <td className="px-4 py-2 border">
+                  <td className="border px-4 py-2">
                     {password.endDate
                       ? new Date(password.endDate).toLocaleString()
                       : "-"}
@@ -124,4 +129,4 @@ export default function LockDetailPage() {
       </div>
     </div>
   );
-} 
+}

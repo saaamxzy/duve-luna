@@ -61,27 +61,27 @@ function parseLockAlias(lockAlias: string): {
 } {
   // Extract street number and the rest as lock name
   const match = lockAlias.match(/^(\d+)\s+(.+)$/);
-  
+
   if (match && match[1] && match[2]) {
     const streetNumber = match[1];
     const lockName = match[2].trim();
-    
+
     if (!streetNumber) {
-      return { 
-        streetNumber: "", 
+      return {
+        streetNumber: "",
         lockName: "",
-        reason: `Invalid street number in alias: ${lockAlias}`
+        reason: `Invalid street number in alias: ${lockAlias}`,
       };
     }
-    
+
     return { streetNumber, lockName };
   }
 
   // If no format matches, return empty strings with reason
-  return { 
-    streetNumber: "", 
+  return {
+    streetNumber: "",
     lockName: "",
-    reason: `Lock alias format not recognized: ${lockAlias}. Expected format is: "1117 Front Door" or "101 A1"`
+    reason: `Lock alias format not recognized: ${lockAlias}. Expected format is: "1117 Front Door" or "101 A1"`,
   };
 }
 
@@ -127,7 +127,11 @@ async function populateLockProfiles() {
     let totalSkipped = 0;
     let totalFromAPI = 0;
     let hasMore = true;
-    let skippedLocks: Array<{lockId: number, lockAlias: string, reason: string}> = [];
+    let skippedLocks: Array<{
+      lockId: number;
+      lockAlias: string;
+      reason: string;
+    }> = [];
 
     while (hasMore) {
       console.log(`\nFetching page ${currentPage}...`);
@@ -140,11 +144,15 @@ async function populateLockProfiles() {
       const { list, pages, total } = response.data;
       totalFromAPI = total;
 
-      console.log(`Page ${currentPage}: Received ${list.length} locks from API`);
+      console.log(
+        `Page ${currentPage}: Received ${list.length} locks from API`,
+      );
 
       // Process each lock
       for (const lock of list) {
-        const { streetNumber, lockName, reason } = parseLockAlias(lock.lockAlias);
+        const { streetNumber, lockName, reason } = parseLockAlias(
+          lock.lockAlias,
+        );
 
         if (!streetNumber || !lockName) {
           console.warn(
@@ -153,7 +161,7 @@ async function populateLockProfiles() {
           skippedLocks.push({
             lockId: lock.lockId,
             lockAlias: lock.lockAlias,
-            reason: reason || "Unknown reason"
+            reason: reason || "Unknown reason",
           });
           totalSkipped++;
           continue;
@@ -198,17 +206,16 @@ async function populateLockProfiles() {
     console.log(`Total locks from API: ${totalFromAPI}`);
     console.log(`Successfully processed: ${totalProcessed}`);
     console.log(`Skipped locks: ${totalSkipped}`);
-    
+
     if (skippedLocks.length > 0) {
       console.log("\n=== Skipped Locks Details ===");
-      skippedLocks.forEach(lock => {
+      skippedLocks.forEach((lock) => {
         console.log(`Lock ID: ${lock.lockId}`);
         console.log(`Alias: ${lock.lockAlias}`);
         console.log(`Reason: ${lock.reason}`);
         console.log("---");
       });
     }
-
   } catch (error) {
     console.error("Error populating lock profiles:", error);
   }

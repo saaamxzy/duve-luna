@@ -22,7 +22,7 @@ export default function LocksPage() {
   useEffect(() => {
     const fetchLocks = async () => {
       try {
-        const response = await fetch('/api/locks');
+        const response = await fetch("/api/locks");
         const data: unknown = await response.json();
         if (isLocksApiResponse(data)) {
           setLocks(data.locks ?? []);
@@ -57,7 +57,7 @@ export default function LocksPage() {
       });
 
       if (response.ok) {
-        const updatedResponse = await fetch('/api/locks');
+        const updatedResponse = await fetch("/api/locks");
         const data: unknown = await updatedResponse.json();
         if (isLocksApiResponse(data)) {
           setLocks(data.locks ?? []);
@@ -79,23 +79,21 @@ export default function LocksPage() {
 
   return (
     <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">Lock Profiles</h1>
-        <div className="text-gray-600">
-          Total Locks: {locks.length}
-        </div>
+        <div className="text-gray-600">Total Locks: {locks.length}</div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full bg-white border border-gray-200">
+        <table className="min-w-full border border-gray-200 bg-white">
           <thead>
             <tr className="bg-gray-100">
-              <th className="px-4 py-2 border">Property Name</th>
-              <th className="px-4 py-2 border">Street Number</th>
-              <th className="px-4 py-2 border">Room Number</th>
-              <th className="px-4 py-2 border">Lock ID</th>
-              <th className="px-4 py-2 border">Lock Code</th>
-              <th className="px-4 py-2 border">Actions</th>
+              <th className="border px-4 py-2">Property Name</th>
+              <th className="border px-4 py-2">Street Number</th>
+              <th className="border px-4 py-2">Room Number</th>
+              <th className="border px-4 py-2">Lock ID</th>
+              <th className="border px-4 py-2">Lock Code</th>
+              <th className="border px-4 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -103,7 +101,7 @@ export default function LocksPage() {
               <tr key={lock.id} className="hover:bg-gray-50">
                 {editingLock?.id === lock.id ? (
                   <>
-                    <td className="px-4 py-2 border">
+                    <td className="border px-4 py-2">
                       <input
                         type="text"
                         value={editingLock.fullPropertyName}
@@ -113,12 +111,12 @@ export default function LocksPage() {
                             fullPropertyName: e.target.value,
                           })
                         }
-                        className="w-full p-1 border rounded"
+                        className="w-full rounded border p-1"
                       />
                     </td>
-                    <td className="px-4 py-2 border">{lock.streetNumber}</td>
-                    <td className="px-4 py-2 border">{lock.lockName}</td>
-                    <td className="px-4 py-2 border">
+                    <td className="border px-4 py-2">{lock.streetNumber}</td>
+                    <td className="border px-4 py-2">{lock.lockName}</td>
+                    <td className="border px-4 py-2">
                       <input
                         type="text"
                         value={editingLock.lockId ?? ""}
@@ -128,10 +126,10 @@ export default function LocksPage() {
                             lockId: e.target.value,
                           })
                         }
-                        className="w-full p-1 border rounded"
+                        className="w-full rounded border p-1"
                       />
                     </td>
-                    <td className="px-4 py-2 border">
+                    <td className="border px-4 py-2">
                       <input
                         type="text"
                         value={editingLock.lockCode ?? ""}
@@ -141,20 +139,20 @@ export default function LocksPage() {
                             lockCode: e.target.value,
                           })
                         }
-                        className="w-full p-1 border rounded"
+                        className="w-full rounded border p-1"
                         placeholder="#1234"
                       />
                     </td>
-                    <td className="px-4 py-2 border">
+                    <td className="border px-4 py-2">
                       <button
                         onClick={handleSave}
-                        className="bg-green-500 text-white px-2 py-1 rounded mr-2"
+                        className="mr-2 rounded bg-green-500 px-2 py-1 text-white"
                       >
                         Save
                       </button>
                       <button
                         onClick={handleCancel}
-                        className="bg-gray-500 text-white px-2 py-1 rounded"
+                        className="rounded bg-gray-500 px-2 py-1 text-white"
                       >
                         Cancel
                       </button>
@@ -162,10 +160,12 @@ export default function LocksPage() {
                   </>
                 ) : (
                   <>
-                    <td className="px-4 py-2 border">{lock.fullPropertyName}</td>
-                    <td className="px-4 py-2 border">{lock.streetNumber}</td>
-                    <td className="px-4 py-2 border">{lock.lockName}</td>
-                    <td className="px-4 py-2 border">
+                    <td className="border px-4 py-2">
+                      {lock.fullPropertyName}
+                    </td>
+                    <td className="border px-4 py-2">{lock.streetNumber}</td>
+                    <td className="border px-4 py-2">{lock.lockName}</td>
+                    <td className="border px-4 py-2">
                       {lock.lockId ? (
                         <Link
                           href={`/locks/${lock.id}`}
@@ -177,11 +177,11 @@ export default function LocksPage() {
                         "-"
                       )}
                     </td>
-                    <td className="px-4 py-2 border">{lock.lockCode ?? "-"}</td>
-                    <td className="px-4 py-2 border">
+                    <td className="border px-4 py-2">{lock.lockCode ?? "-"}</td>
+                    <td className="border px-4 py-2">
                       <button
                         onClick={() => handleEdit(lock)}
-                        className="bg-blue-500 text-white px-2 py-1 rounded"
+                        className="rounded bg-blue-500 px-2 py-1 text-white"
                       >
                         Edit
                       </button>
