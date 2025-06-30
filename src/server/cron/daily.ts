@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { db } from "../db";
 import { env } from "../../env.cjs";
-import { writeFileSync, appendFileSync, existsSync } from "fs";
+import { writeFileSync, existsSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 // --- Types based on Duve API response ---
@@ -766,7 +766,7 @@ export function logFailedLockUpdate(
   // Create logs directory if it doesn't exist
   if (!existsSync(logsDir)) {
     try {
-      require("fs").mkdirSync(logsDir, { recursive: true });
+      mkdirSync(logsDir, { recursive: true });
     } catch (error) {
       console.error("Failed to create logs directory:", error);
       return;
@@ -777,8 +777,8 @@ export function logFailedLockUpdate(
   let failedLocks: FailedLockUpdate[] = [];
   if (existsSync(failedLocksFile)) {
     try {
-      const fileContent = require("fs").readFileSync(failedLocksFile, "utf8");
-      failedLocks = JSON.parse(fileContent);
+      const fileContent = readFileSync(failedLocksFile, "utf8");
+      failedLocks = JSON.parse(fileContent) as FailedLockUpdate[];
     } catch (error) {
       console.error("Failed to read existing failed locks file:", error);
       failedLocks = [];
