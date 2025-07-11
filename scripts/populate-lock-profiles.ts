@@ -1,4 +1,5 @@
 import { db } from "../src/server/db";
+import { getConfigWithFallback } from "../src/server/config";
 
 interface LockVersion {
   showAdminKbpwdFlag: boolean;
@@ -86,12 +87,15 @@ function parseLockAlias(lockAlias: string): {
 }
 
 async function fetchLocks(page: number): Promise<ApiResponse> {
+  // Get configuration values from database with fallback to environment variables
+  const sifelyAuthToken = await getConfigWithFallback("SIFELY_AUTH_TOKEN");
+
   const response = await fetch("https://pro-server.sifely.com/v3/key/list", {
     method: "POST",
     headers: {
       Accept: "application/json, text/plain, */*",
       "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-      Authorization: process.env.SIFELY_AUTH_TOKEN as string,
+      Authorization: sifelyAuthToken || "",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
       "Content-Type": "application/x-www-form-urlencoded",

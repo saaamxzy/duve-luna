@@ -105,4 +105,100 @@ Failed lock updates include:
 - Error message
 - Timestamp of failure
 
-This information helps with debugging and provides context for retry attempts. 
+This information helps with debugging and provides context for retry attempts.
+
+## Manual Lock Update Script
+
+### `manual-lock-update.ts`
+A debugging script that allows manual lock code updates with extensive logging for troubleshooting issues.
+
+```bash
+# Interactive mode (prompts for all parameters)
+npx tsx scripts/manual-lock-update.ts
+
+# Command line mode with all parameters
+npx tsx scripts/manual-lock-update.ts --lockId 1234567 --passcode 9876 --startDate 2024-01-15 --endDate 2024-01-17
+
+# With optional Duve ID
+npx tsx scripts/manual-lock-update.ts -l 1234567 -p 9876 -s "2024-01-15 15:00" -e "2024-01-17 11:00" -d cmcjfragk00pu070w964sln4r
+
+# Skip Duve update (for debugging)
+npx tsx scripts/manual-lock-update.ts --lockId 1234567 --passcode 9876 --startDate 2024-01-15 --endDate 2024-01-17 --skipDuveUpdate
+
+# Show help
+npx tsx scripts/manual-lock-update.ts --help
+```
+
+**Features:**
+- **Interactive Mode**: Prompts for all required parameters step-by-step
+- **Command Line Mode**: Accepts all parameters via command line arguments
+- **Extensive Debugging**: Shows detailed information about lock profiles, keyboard passwords, and API responses
+- **Validation**: Validates passcode format and date ranges before attempting update
+- **Confirmation**: Requires user confirmation before making changes
+- **Verification**: Shows before and after state of the lock profile
+- **Optional Duve Update**: Can skip Duve reservation updates for debugging purposes
+
+**Parameters:**
+- `--lockId, -l`: Lock ID from the lock system (required)
+- `--passcode, -p`: 4-digit passcode (required, # prefix optional)
+- `--startDate, -s`: Start date in YYYY-MM-DD or YYYY-MM-DD HH:MM format (required)
+- `--endDate, -e`: End date in YYYY-MM-DD or YYYY-MM-DD HH:MM format (required)
+- `--duveId, -d`: Duve reservation ID (optional, will use linked reservation if available)
+- `--skipDuveUpdate`: Skip updating Duve reservation (optional flag)
+
+**Output example:**
+```
+🔧 Manual Lock Update Script Started
+⏰ Current time: 2024-01-14T10:30:45.123Z
+
+🔍 STEP 1: Validating lock profile...
+
+🔍 Fetching lock profile details for lockId: 1234567
+✅ Lock Profile Found:
+   - ID: clr123abc456def789
+   - Property: 123 Main St - A1
+   - Street Number: 123
+   - Lock Name: A1
+   - Current Lock Code: #1234
+   - Created: 2024-01-01T12:00:00.000Z
+   - Updated: 2024-01-10T15:30:00.000Z
+   - Linked Reservation: clr789xyz123abc456
+   - Guest: John Doe
+   - Duve ID: cmcjfragk00pu070w964sln4r
+   - Check-in: 2024-01-15T19:00:00.000Z
+   - Check-out: 2024-01-17T15:00:00.000Z
+   - Keyboard Passwords Found: 2
+     1. ID: 98765, Name: "Guest Code 1"
+        Code: 1234, Status: 1
+        Start: 2024-01-15T19:00:00.000Z
+        End: 2024-01-17T15:00:00.000Z
+        Version: 1, Type: 1
+
+🔍 STEP 2: Logging update attempt details...
+
+📝 UPDATE ATTEMPT DETAILS:
+   - Lock ID: 1234567
+   - New Passcode: 9876
+   - Start Date: 2024-01-15T19:00:00.000Z
+   - End Date: 2024-01-17T15:00:00.000Z
+   - Duve ID: cmcjfragk00pu070w964sln4r
+   - Timezone: UTC (times will be adjusted for EDT check-in/out)
+
+Proceed with lock update? (y/N): y
+
+🚀 STEP 3: Attempting lock code update...
+⏱️  Update completed in 1250ms
+✅ LOCK UPDATE SUCCESSFUL!
+
+🔍 STEP 4: Verifying changes...
+[Shows updated lock profile details]
+
+🔌 Disconnecting from database...
+✅ Script completed
+```
+
+**Use Cases:**
+- **Debugging Failed Updates**: Test lock updates manually when the daily task fails
+- **Testing New Locks**: Verify lock connectivity and API functionality
+- **Emergency Updates**: Manually update lock codes outside of the daily task schedule
+- **Troubleshooting**: Get detailed information about lock profiles and their current state 

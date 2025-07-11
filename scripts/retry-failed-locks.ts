@@ -1,7 +1,10 @@
 import { readFileSync, existsSync, writeFileSync } from "fs";
 import { join } from "path";
 import { updateLockCode } from "../src/server/cron/daily";
-import type { FailedLockUpdate } from "../src/server/cron/daily";
+import type {
+  FailedLockUpdate,
+  LockUpdateResult,
+} from "../src/server/cron/daily";
 
 interface RetryResult {
   success: boolean;
@@ -10,6 +13,18 @@ interface RetryResult {
   fullAddress: string;
   guestName: string;
   error?: string;
+  errorDetails?: {
+    type: "sifely_api" | "duve_api" | "network" | "database" | "unknown";
+    message: string;
+    apiResponse?: {
+      code?: number;
+      msg?: string;
+      errcode?: number;
+      errmsg?: string;
+      description?: string;
+    };
+    httpStatus?: number;
+  };
 }
 
 async function retryFailedLocks(): Promise<void> {
@@ -65,7 +80,7 @@ async function retryFailedLocks(): Promise<void> {
         }
 
         // Retry the lock code update
-        const success = await updateLockCode(
+        const result = await updateLockCode(
           failedLock.lockId,
           Math.floor(1000 + Math.random() * 9000).toString(), // Generate new code
           new Date(failedLock.startDate),
@@ -73,7 +88,7 @@ async function retryFailedLocks(): Promise<void> {
           failedLock.duveId,
         );
 
-        if (success) {
+        if (result.success) {
           console.log("✅ Successfully retried lock code update");
           retryResults.push({
             success: true,
@@ -85,13 +100,16 @@ async function retryFailedLocks(): Promise<void> {
           successCount++;
         } else {
           console.log("❌ Failed to retry lock code update");
+          const errorMessage = result.errorDetails?.message || "Retry failed";
+          console.log(`   Error: ${errorMessage}`);
           retryResults.push({
             success: false,
             reservationId: failedLock.reservationId,
             lockId: failedLock.lockId,
             fullAddress: failedLock.fullAddress,
             guestName: failedLock.guestName,
-            error: "Retry failed",
+            error: errorMessage,
+            errorDetails: result.errorDetails,
           });
           failureCount++;
         }

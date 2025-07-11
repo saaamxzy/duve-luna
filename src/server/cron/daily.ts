@@ -1,8 +1,8 @@
 import cron from "node-cron";
 import { db } from "../db";
-import { env } from "../../env.cjs";
 import { writeFileSync, existsSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
+import { getConfigWithFallback } from "../config";
 
 // --- Types based on Duve API response ---
 interface GuestProfile {
@@ -133,6 +133,10 @@ async function fetchReservationsPage(
     }),
   );
 
+  // Get configuration values from database with fallback to environment variables
+  const duveCSRFToken = await getConfigWithFallback("DUVE_CSRF_TOKEN");
+  const duveCookie = await getConfigWithFallback("DUVE_COOKIE");
+
   const response = await fetch(url.toString(), {
     headers: {
       accept: "application/json",
@@ -148,8 +152,8 @@ async function fetchReservationsPage(
       "sec-fetch-site": "same-origin",
       "user-agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-      "x-csrftoken": env.DUVE_CSRF_TOKEN,
-      cookie: env.DUVE_COOKIE,
+      "x-csrftoken": duveCSRFToken ?? "",
+      cookie: duveCookie ?? "",
     },
     credentials: "include",
   });
@@ -190,6 +194,10 @@ async function updateDuveReservationCode(
   code: string,
 ): Promise<boolean> {
   try {
+    // Get configuration values from database with fallback to environment variables
+    const duveCSRFToken = await getConfigWithFallback("DUVE_CSRF_TOKEN");
+    const duveCookie = await getConfigWithFallback("DUVE_COOKIE");
+
     const response = await fetch(
       `https://frontdesk.duve.com/api/reservations/${duveId}`,
       {
@@ -212,8 +220,8 @@ async function updateDuveReservationCode(
           "sec-fetch-site": "same-origin",
           "user-agent":
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-          "x-csrftoken": env.DUVE_CSRF_TOKEN,
-          cookie: env.DUVE_COOKIE,
+          "x-csrftoken": duveCSRFToken ?? "",
+          cookie: duveCookie ?? "",
         },
         body: JSON.stringify({
           mode: true,
@@ -248,6 +256,23 @@ async function updateDuveReservationCode(
   }
 }
 
+// Result type for lock code updates
+export interface LockUpdateResult {
+  success: boolean;
+  errorDetails?: {
+    type: "sifely_api" | "duve_api" | "network" | "database" | "unknown";
+    message: string;
+    apiResponse?: {
+      code?: number;
+      msg?: string;
+      errcode?: number;
+      errmsg?: string;
+      description?: string;
+    };
+    httpStatus?: number;
+  };
+}
+
 // Function to update lock code via API
 export async function updateLockCode(
   lockId: string,
@@ -255,7 +280,7 @@ export async function updateLockCode(
   startDate: Date,
   endDate: Date,
   duveId: string,
-): Promise<boolean> {
+): Promise<LockUpdateResult> {
   try {
     // Find the LockProfile and its keyboard passwords
     const lockProfile = await db.lockProfile.findFirst({
@@ -288,7 +313,13 @@ export async function updateLockCode(
 
     if (!lockProfile) {
       console.error(`[LockProfile] No LockProfile found for lockId ${lockId}`);
-      return false;
+      return {
+        success: false,
+        errorDetails: {
+          type: "database",
+          message: `No LockProfile found for lockId ${lockId}`,
+        },
+      };
     }
 
     const keyboardPassword = lockProfile.keyboardPasswords[0];
@@ -296,7 +327,13 @@ export async function updateLockCode(
       console.error(
         `[LockProfile] No active Guest Code found for lockId ${lockId}`,
       );
-      return false;
+      return {
+        success: false,
+        errorDetails: {
+          type: "database",
+          message: `No active Guest Code found for lockId ${lockId}`,
+        },
+      };
     }
 
     // Set specific times for check-in (3 PM) and check-out (11 AM) in UTC
@@ -323,6 +360,9 @@ export async function updateLockCode(
       console.log(`- New End Date: ${checkOutTime.toISOString()}`);
     }
 
+    // Get configuration values from database with fallback to environment variables
+    const sifelyAuthToken = await getConfigWithFallback("SIFELY_AUTH_TOKEN");
+
     const response = await fetch(
       "https://pro-server.sifely.com/v3/keyboardPwd/change",
       {
@@ -330,7 +370,7 @@ export async function updateLockCode(
         headers: {
           Accept: "application/json, text/plain, */*",
           "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
-          Authorization: env.SIFELY_AUTH_TOKEN,
+          Authorization: sifelyAuthToken ?? "",
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
           "Content-Type": "application/x-www-form-urlencoded",
@@ -361,8 +401,17 @@ export async function updateLockCode(
     );
 
     const data: unknown = await response.json();
-    // Add explicit type for API response
-    const apiResponse = data as { code: number; [key: string]: unknown };
+    // Add explicit type for API response with nested error handling
+    const apiResponse = data as {
+      code: number;
+      msg?: string;
+      data?: {
+        errcode?: number;
+        errmsg?: string;
+        description?: string;
+      };
+      [key: string]: unknown;
+    };
 
     if (TEST_MODE) {
       console.log(
@@ -372,12 +421,56 @@ export async function updateLockCode(
     }
 
     if (apiResponse.code !== 200) {
-      console.error(`[LockProfile] API Error for lockId ${lockId}:`, {
-        status: response.status,
-        statusText: response.statusText,
-        response: apiResponse,
-      });
-      return false;
+      console.error(
+        `[LockProfile] API Error for lockId ${lockId} - Request failed:`,
+        {
+          status: response.status,
+          statusText: response.statusText,
+          response: apiResponse,
+        },
+      );
+      return {
+        success: false,
+        errorDetails: {
+          type: "sifely_api",
+          message: `API request failed with status ${response.status}`,
+          apiResponse: {
+            code: apiResponse.code,
+            msg: apiResponse.msg,
+          },
+          httpStatus: response.status,
+        },
+      };
+    }
+
+    // Check for nested error codes even when main response is successful
+    if (apiResponse.data?.errcode && apiResponse.data.errcode !== 0) {
+      console.error(
+        `[LockProfile] API Error for lockId ${lockId} - Operation failed:`,
+        {
+          errcode: apiResponse.data.errcode,
+          errmsg: apiResponse.data.errmsg,
+          description: apiResponse.data.description,
+        },
+      );
+      console.error(
+        `[LockProfile] Lock update failed: ${apiResponse.data.errmsg}`,
+      );
+      return {
+        success: false,
+        errorDetails: {
+          type: "sifely_api",
+          message: apiResponse.data.errmsg ?? "Lock operation failed",
+          apiResponse: {
+            code: apiResponse.code,
+            msg: apiResponse.msg,
+            errcode: apiResponse.data.errcode,
+            errmsg: apiResponse.data.errmsg,
+            description: apiResponse.data.description,
+          },
+          httpStatus: response.status,
+        },
+      };
     }
 
     // Update the KeyboardPassword record in the database
@@ -399,7 +492,7 @@ export async function updateLockCode(
       // We still return true since the lock code was updated successfully
     }
 
-    return true;
+    return { success: true };
   } catch (error) {
     console.error(
       `[LockProfile] Error updating lock code for lockId ${lockId}:`,
@@ -408,15 +501,28 @@ export async function updateLockCode(
 
     // Return more detailed error information
     if (error instanceof Error) {
-      return false;
+      return {
+        success: false,
+        errorDetails: {
+          type: "unknown",
+          message: error.message,
+        },
+      };
     }
-    return false;
+    return {
+      success: false,
+      errorDetails: {
+        type: "unknown",
+        message: "Unknown error occurred",
+      },
+    };
   }
 }
 
 // Function to process a single reservation
 async function processReservation(
   reservation: Reservation,
+  dailyTaskRunId: string,
 ): Promise<{ success: boolean; lockUpdateFailed?: boolean }> {
   // Create or update the reservation
   const reservationData = {
@@ -465,13 +571,13 @@ async function processReservation(
     where: { duveId: reservation._id },
     create: {
       ...reservationData,
-      bookingStatus: reservation.bookingStatus || "unknown",
-      bookingSource: reservation.bookingSourceLabel || "unknown",
+      bookingStatus: reservation.bookingStatus ?? "unknown",
+      bookingSource: reservation.bookingSourceLabel ?? "unknown",
     },
     update: {
       ...reservationData,
-      bookingStatus: reservation.bookingStatus || "unknown",
-      bookingSource: reservation.bookingSourceLabel || "unknown",
+      bookingStatus: reservation.bookingStatus ?? "unknown",
+      bookingSource: reservation.bookingSourceLabel ?? "unknown",
     },
   });
 
@@ -512,7 +618,7 @@ async function processReservation(
         if (shouldUpdate) {
           // Generate new lock code and update via API
           const newLockCode = generateLockCode();
-          const updateSuccess = await updateLockCode(
+          const updateResult = await updateLockCode(
             existingLockProfile.lockId,
             newLockCode,
             new Date(reservation.startDate),
@@ -520,7 +626,7 @@ async function processReservation(
             reservation._id,
           );
 
-          if (updateSuccess) {
+          if (updateResult.success) {
             // Update both LockProfile and Reservation with the new lock code
             await db.lockProfile.update({
               where: { id: existingLockProfile.id },
@@ -546,18 +652,24 @@ async function processReservation(
 
             lockUpdateFailed = true;
 
-            // Log failed lock update to file
-            logFailedLockUpdate({
-              reservationId: savedReservation.id,
-              duveId: reservation._id,
-              lockId: existingLockProfile.lockId,
-              propertyName: reservation.property.name,
-              fullAddress,
-              guestName,
-              startDate: new Date(reservation.startDate).toISOString(),
-              endDate: new Date(reservation.endDate).toISOString(),
-              error: "Lock code update failed",
-            });
+            // Log failed lock update to file with detailed error information
+            await logFailedLockUpdate(
+              {
+                reservationId: savedReservation.id,
+                duveId: reservation._id,
+                lockId: existingLockProfile.lockId,
+                propertyName: reservation.property.name,
+                fullAddress,
+                guestName,
+                startDate: new Date(reservation.startDate).toISOString(),
+                endDate: new Date(reservation.endDate).toISOString(),
+                error:
+                  updateResult.errorDetails?.message ??
+                  "Lock code update failed",
+                errorDetails: updateResult.errorDetails,
+              },
+              dailyTaskRunId,
+            );
           }
         } else {
           console.log(
@@ -599,17 +711,20 @@ async function processReservation(
 
     // Log failed lock update to file if we have a lockId
     if (error instanceof Error) {
-      logFailedLockUpdate({
-        reservationId: savedReservation.id,
-        duveId: reservation._id,
-        lockId: "unknown",
-        propertyName: reservation.property.name,
-        fullAddress,
-        guestName,
-        startDate: new Date(reservation.startDate).toISOString(),
-        endDate: new Date(reservation.endDate).toISOString(),
-        error: error.message,
-      });
+      await logFailedLockUpdate(
+        {
+          reservationId: savedReservation.id,
+          duveId: reservation._id,
+          lockId: "unknown",
+          propertyName: reservation.property.name,
+          fullAddress,
+          guestName,
+          startDate: new Date(reservation.startDate).toISOString(),
+          endDate: new Date(reservation.endDate).toISOString(),
+          error: error.message,
+        },
+        dailyTaskRunId,
+      );
     }
     // Continue processing other data even if LockProfile creation fails
   }
@@ -668,8 +783,19 @@ async function processReservation(
 
 // Function that will be executed daily
 export async function dailyTask(): Promise<void> {
+  const startTime = new Date();
+  let dailyTaskRun;
+
   try {
     console.log("Running daily task...");
+
+    // Create a DailyTaskRun record
+    dailyTaskRun = await db.dailyTaskRun.create({
+      data: {
+        startTime,
+        status: "running",
+      },
+    });
 
     // Get today's date in ISO format
     const today = new Date();
@@ -686,7 +812,7 @@ export async function dailyTask(): Promise<void> {
 
       // Process each reservation in the current page
       for (const reservation of data.reservations) {
-        const result = await processReservation(reservation);
+        const result = await processReservation(reservation, dailyTaskRun.id);
         totalProcessed++;
 
         if (result.lockUpdateFailed) {
@@ -705,13 +831,28 @@ export async function dailyTask(): Promise<void> {
       }
     }
 
+    // Update the DailyTaskRun with final statistics
+    const endTime = new Date();
+    const duration = endTime.getTime() - startTime.getTime();
+    const successfulUpdates = totalProcessed - totalLockUpdateFailures;
+
+    await db.dailyTaskRun.update({
+      where: { id: dailyTaskRun.id },
+      data: {
+        endTime,
+        duration,
+        status: "completed",
+        totalReservations: totalProcessed,
+        successfulUpdates,
+        failedUpdates: totalLockUpdateFailures,
+      },
+    });
+
     // Provide detailed summary
     console.log(`\n=== Daily Task Summary ===`);
     console.log(`Total reservations processed: ${totalProcessed}`);
     console.log(`Lock code update failures: ${totalLockUpdateFailures}`);
-    console.log(
-      `Successful lock code updates: ${totalProcessed - totalLockUpdateFailures}`,
-    );
+    console.log(`Successful lock code updates: ${successfulUpdates}`);
 
     if (totalLockUpdateFailures > 0) {
       console.log(
@@ -725,6 +866,23 @@ export async function dailyTask(): Promise<void> {
     }
   } catch (error) {
     console.error("Error in daily task:", error);
+
+    // Update the DailyTaskRun to mark it as failed
+    if (dailyTaskRun) {
+      const endTime = new Date();
+      const duration = endTime.getTime() - startTime.getTime();
+
+      await db.dailyTaskRun.update({
+        where: { id: dailyTaskRun.id },
+        data: {
+          endTime,
+          duration,
+          status: "failed",
+          error: error instanceof Error ? error.message : "Unknown error",
+          errorStack: error instanceof Error ? error.stack : undefined,
+        },
+      });
+    }
   }
 }
 
@@ -748,18 +906,57 @@ export interface FailedLockUpdate {
   startDate: string;
   endDate: string;
   error: string;
+  errorDetails?: {
+    type: "sifely_api" | "duve_api" | "network" | "database" | "unknown";
+    apiResponse?: {
+      code?: number;
+      msg?: string;
+      errcode?: number;
+      errmsg?: string;
+      description?: string;
+    };
+    httpStatus?: number;
+  };
   timestamp: string;
 }
 
-export function logFailedLockUpdate(
+export async function logFailedLockUpdate(
   failedUpdate: Omit<FailedLockUpdate, "timestamp">,
-): void {
+  dailyTaskRunId: string,
+): Promise<void> {
   const timestamp = new Date().toISOString();
   const logEntry: FailedLockUpdate = {
     ...failedUpdate,
     timestamp,
   };
 
+  // Store in database
+  try {
+    await db.failedLockUpdate.create({
+      data: {
+        dailyTaskRunId,
+        reservationId: failedUpdate.reservationId,
+        duveId: failedUpdate.duveId,
+        lockId: failedUpdate.lockId,
+        propertyName: failedUpdate.propertyName,
+        fullAddress: failedUpdate.fullAddress,
+        guestName: failedUpdate.guestName,
+        startDate: new Date(failedUpdate.startDate),
+        endDate: new Date(failedUpdate.endDate),
+        error: failedUpdate.error,
+        errorType: failedUpdate.errorDetails?.type ?? "unknown",
+        errorDetails: failedUpdate.errorDetails ?? {},
+      },
+    });
+    console.log(`[FailedLockLogger] Logged failed lock update to database`);
+  } catch (error) {
+    console.error(
+      "Failed to create database record for failed lock update:",
+      error,
+    );
+  }
+
+  // Also keep the file logging for backward compatibility
   const logsDir = join(process.cwd(), "logs");
   const failedLocksFile = join(logsDir, "failed-lock-updates.json");
 

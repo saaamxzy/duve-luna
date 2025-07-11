@@ -155,3 +155,78 @@ model KeyboardPassword {
 
     @@index([lockProfileId])
 }
+
+model Configuration {
+    id                String   @id @default(cuid())
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // Configuration key-value pairs
+    key               String   @unique
+    value             String?
+    isEncrypted       Boolean  @default(false)
+    description       String?
+
+    @@index([key])
+}
+
+model DailyTaskRun {
+    id                String   @id @default(cuid())
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // Task execution details
+    startTime         DateTime
+    endTime           DateTime?
+    duration          Int?     // Duration in milliseconds
+    status            String   // "running", "completed", "failed"
+    
+    // Task statistics
+    totalReservations Int      @default(0)
+    successfulUpdates Int      @default(0)
+    failedUpdates     Int      @default(0)
+    
+    // Error information if task failed
+    error             String?
+    errorStack        String?
+    
+    // Failed lock updates for this run
+    failedLockUpdates FailedLockUpdate[]
+    
+    @@index([startTime])
+    @@index([status])
+}
+
+model FailedLockUpdate {
+    id                String   @id @default(cuid())
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // Link to the daily task run
+    dailyTaskRun      DailyTaskRun @relation(fields: [dailyTaskRunId], references: [id], onDelete: Cascade)
+    dailyTaskRunId    String
+
+    // Reservation and lock details
+    reservationId     String
+    duveId            String
+    lockId            String
+    propertyName      String
+    fullAddress       String
+    guestName         String
+    startDate         DateTime
+    endDate           DateTime
+    
+    // Error details
+    error             String
+    errorType         String?  // 'sifely_api', 'duve_api', 'network', 'database', 'unknown'
+    errorDetails      Json?    // Store full error details as JSON
+    
+    // Retry information
+    retryCount        Int      @default(0)
+    lastRetryAt       DateTime?
+    retrySuccessful   Boolean  @default(false)
+    
+    @@index([dailyTaskRunId])
+    @@index([lockId])
+    @@index([retrySuccessful])
+}
