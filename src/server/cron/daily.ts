@@ -616,8 +616,41 @@ async function processReservation(
         const shouldUpdate = !TEST_MODE || isTestData(reservation);
 
         if (shouldUpdate) {
+          // Check if this lock has already been successfully updated today
+          const today = new Date();
+          today.setHours(0, 0, 0, 0); // Start of today
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1); // Start of tomorrow
+
+          const existingUpdate = await db.successfulLockUpdate.findFirst({
+            where: {
+              lockId: existingLockProfile.lockId,
+              createdAt: {
+                gte: today,
+                lt: tomorrow,
+              },
+            },
+          });
+
+          if (existingUpdate) {
+            console.log(
+              `[LockProfile] Lock ${existingLockProfile.lockId} already updated today. Skipping update for reservation ${savedReservation.id} (${fullAddress} - ${guestName})`,
+            );
+
+            // Still link the reservation to the existing lock
+            await db.reservation.update({
+              where: { id: savedReservation.id },
+              data: {
+                lockId: existingLockProfile.lockId,
+              },
+            });
+
+            return { success: true, lockUpdateFailed: false };
+          }
+
           // Generate new lock code and update via API
           const newLockCode = generateLockCode();
+          const updateStartTime = Date.now();
           const updateResult = await updateLockCode(
             existingLockProfile.lockId,
             newLockCode,
@@ -625,6 +658,8 @@ async function processReservation(
             new Date(reservation.endDate),
             reservation._id,
           );
+          const updateEndTime = Date.now();
+          const processingTime = updateEndTime - updateStartTime;
 
           if (updateResult.success) {
             // Update both LockProfile and Reservation with the new lock code
@@ -644,6 +679,25 @@ async function processReservation(
 
             console.log(
               `[LockProfile] Successfully updated lock code for reservation ${savedReservation.id} (${fullAddress} - ${guestName}) (lockId: ${existingLockProfile.lockId}, new code: #${newLockCode})`,
+            );
+
+            // Log successful lock update to database
+            await logSuccessfulLockUpdate(
+              {
+                reservationId: savedReservation.id,
+                duveId: reservation._id,
+                lockId: existingLockProfile.lockId,
+                propertyName: reservation.property.name,
+                fullAddress,
+                guestName,
+                startDate: new Date(reservation.startDate).toISOString(),
+                endDate: new Date(reservation.endDate).toISOString(),
+                lockCode: `#${newLockCode}`,
+                lockCodeStart: new Date(reservation.startDate).toISOString(),
+                lockCodeEnd: new Date(reservation.endDate).toISOString(),
+                processingTime,
+              },
+              dailyTaskRunId,
             );
           } else {
             console.error(
@@ -781,6 +835,48 @@ async function processReservation(
   return { success: true, lockUpdateFailed };
 }
 
+// Function to check and kill tasks that have been running for too long
+export async function killStuckTasks(): Promise<void> {
+  const TIMEOUT_MINUTES = 60; // Kill tasks running for more than 60 minutes
+  const timeoutThreshold = new Date(Date.now() - TIMEOUT_MINUTES * 60 * 1000);
+
+  try {
+    const stuckTasks = await db.dailyTaskRun.findMany({
+      where: {
+        status: "running",
+        startTime: {
+          lt: timeoutThreshold,
+        },
+      },
+    });
+
+    if (stuckTasks.length > 0) {
+      console.log(`Found ${stuckTasks.length} stuck tasks. Killing them...`);
+
+      for (const task of stuckTasks) {
+        const endTime = new Date();
+        const duration = endTime.getTime() - task.startTime.getTime();
+
+        await db.dailyTaskRun.update({
+          where: { id: task.id },
+          data: {
+            endTime,
+            duration,
+            status: "killed",
+            error: `Task was automatically killed after running for ${Math.round(duration / 1000 / 60)} minutes`,
+          },
+        });
+
+        console.log(
+          `Killed stuck task ${task.id} (running for ${Math.round(duration / 1000 / 60)} minutes)`,
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Error killing stuck tasks:", error);
+  }
+}
+
 // Function that will be executed daily
 export async function dailyTask(): Promise<void> {
   const startTime = new Date();
@@ -788,6 +884,9 @@ export async function dailyTask(): Promise<void> {
 
   try {
     console.log("Running daily task...");
+
+    // First, check and kill any stuck tasks
+    await killStuckTasks();
 
     // Create a DailyTaskRun record
     dailyTaskRun = await db.dailyTaskRun.create({
@@ -888,11 +987,23 @@ export async function dailyTask(): Promise<void> {
 
 // Schedule the task to run at midnight every day
 export function startDailyCron() {
-  cron.schedule("0 0 * * *", () => {
+  // Schedule the task to run at 1:30 PM EDT (5:30 PM UTC) every day
+  // Note: This assumes the server is running in UTC timezone
+  // If the server is in a different timezone, adjust the cron expression accordingly
+  cron.schedule("30 17 * * *", () => {
     void dailyTask();
   });
 
-  console.log("Daily cron job scheduled");
+  // Schedule stuck task cleanup every 30 minutes
+  cron.schedule("*/30 * * * *", () => {
+    void killStuckTasks();
+  });
+
+  console.log("Daily cron job scheduled for 1:30 PM EDT (5:30 PM UTC)");
+  console.log("Stuck task cleanup scheduled (every 30 minutes)");
+  console.log(
+    "⚠️  Note: Ensure server timezone is set to UTC for correct timing",
+  );
 }
 
 // Utility function to log failed lock updates
@@ -918,6 +1029,22 @@ export interface FailedLockUpdate {
     httpStatus?: number;
   };
   timestamp: string;
+}
+
+// Interface for successful lock updates
+export interface SuccessfulLockUpdate {
+  reservationId: string;
+  duveId: string;
+  lockId: string;
+  propertyName: string;
+  fullAddress: string;
+  guestName: string;
+  startDate: string;
+  endDate: string;
+  lockCode: string;
+  lockCodeStart: string;
+  lockCodeEnd: string;
+  processingTime?: number;
 }
 
 export async function logFailedLockUpdate(
@@ -993,5 +1120,39 @@ export async function logFailedLockUpdate(
     );
   } catch (error) {
     console.error("Failed to write failed locks file:", error);
+  }
+}
+
+// Function to log successful lock updates to the database
+export async function logSuccessfulLockUpdate(
+  successfulUpdate: SuccessfulLockUpdate,
+  dailyTaskRunId: string,
+): Promise<void> {
+  try {
+    await db.successfulLockUpdate.create({
+      data: {
+        dailyTaskRunId,
+        reservationId: successfulUpdate.reservationId,
+        duveId: successfulUpdate.duveId,
+        lockId: successfulUpdate.lockId,
+        propertyName: successfulUpdate.propertyName,
+        fullAddress: successfulUpdate.fullAddress,
+        guestName: successfulUpdate.guestName,
+        startDate: new Date(successfulUpdate.startDate),
+        endDate: new Date(successfulUpdate.endDate),
+        lockCode: successfulUpdate.lockCode,
+        lockCodeStart: new Date(successfulUpdate.lockCodeStart),
+        lockCodeEnd: new Date(successfulUpdate.lockCodeEnd),
+        processingTime: successfulUpdate.processingTime,
+      },
+    });
+    console.log(
+      `[SuccessfulLockLogger] Logged successful lock update to database`,
+    );
+  } catch (error) {
+    console.error(
+      "Failed to create database record for successful lock update:",
+      error,
+    );
   }
 }

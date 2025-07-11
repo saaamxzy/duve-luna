@@ -8,6 +8,63 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") ?? "10");
+    const runId = searchParams.get("runId");
+
+    // If runId is provided, return detailed information about that specific run
+    if (runId) {
+      const run = await db.dailyTaskRun.findUnique({
+        where: { id: runId },
+        include: {
+          failedLockUpdates: {
+            where: { retrySuccessful: false },
+            select: {
+              id: true,
+              lockId: true,
+              propertyName: true,
+              fullAddress: true,
+              guestName: true,
+              error: true,
+              errorType: true,
+              retryCount: true,
+              lastRetryAt: true,
+              startDate: true,
+              endDate: true,
+              duveId: true,
+              reservationId: true,
+            },
+          },
+          successfulLockUpdates: {
+            select: {
+              id: true,
+              lockId: true,
+              propertyName: true,
+              fullAddress: true,
+              guestName: true,
+              lockCode: true,
+              lockCodeStart: true,
+              lockCodeEnd: true,
+              processingTime: true,
+              startDate: true,
+              endDate: true,
+              duveId: true,
+              reservationId: true,
+            },
+          },
+        },
+      });
+
+      if (!run) {
+        return NextResponse.json(
+          { success: false, error: "Run not found" },
+          { status: 404 },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { run },
+      });
+    }
 
     // Get recent daily task runs
     const recentRuns = await db.dailyTaskRun.findMany({
@@ -26,6 +83,23 @@ export async function GET(request: NextRequest) {
             errorType: true,
             retryCount: true,
             lastRetryAt: true,
+          },
+        },
+        successfulLockUpdates: {
+          select: {
+            id: true,
+            lockId: true,
+            propertyName: true,
+            fullAddress: true,
+            guestName: true,
+            lockCode: true,
+            lockCodeStart: true,
+            lockCodeEnd: true,
+            processingTime: true,
+            startDate: true,
+            endDate: true,
+            duveId: true,
+            reservationId: true,
           },
         },
       },
@@ -66,7 +140,60 @@ export async function GET(request: NextRequest) {
 // POST /api/daily-task - Trigger daily task manually
 export async function POST(request: NextRequest) {
   try {
-    const { action } = (await request.json()) as { action: string };
+    const body = (await request.json()) as {
+      action: string;
+      taskId?: string;
+      failedUpdateIds?: string[];
+    };
+    const { action, taskId } = body;
+
+    if (action === "kill") {
+      // Kill a running task
+      if (!taskId) {
+        return NextResponse.json(
+          { success: false, error: "Task ID is required" },
+          { status: 400 },
+        );
+      }
+
+      // Find the running task
+      const runningTask = await db.dailyTaskRun.findUnique({
+        where: { id: taskId },
+      });
+
+      if (!runningTask) {
+        return NextResponse.json(
+          { success: false, error: "Task not found" },
+          { status: 404 },
+        );
+      }
+
+      if (runningTask.status !== "running") {
+        return NextResponse.json(
+          { success: false, error: "Task is not running" },
+          { status: 400 },
+        );
+      }
+
+      // Kill the task
+      const endTime = new Date();
+      const duration = endTime.getTime() - runningTask.startTime.getTime();
+
+      await db.dailyTaskRun.update({
+        where: { id: taskId },
+        data: {
+          endTime,
+          duration,
+          status: "killed",
+          error: "Task was manually killed by user",
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Task killed successfully",
+      });
+    }
 
     if (action === "trigger") {
       // Check if there's already a running task
@@ -91,9 +218,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "retry-failed") {
-      const { failedUpdateIds } = (await request.json()) as {
-        failedUpdateIds: string[];
-      };
+      const { failedUpdateIds } = body;
 
       if (!Array.isArray(failedUpdateIds) || failedUpdateIds.length === 0) {
         return NextResponse.json(

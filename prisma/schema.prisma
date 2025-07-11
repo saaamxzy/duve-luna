@@ -179,7 +179,7 @@ model DailyTaskRun {
     startTime         DateTime
     endTime           DateTime?
     duration          Int?     // Duration in milliseconds
-    status            String   // "running", "completed", "failed"
+    status            String   // "running", "completed", "failed", "killed"
     
     // Task statistics
     totalReservations Int      @default(0)
@@ -192,6 +192,9 @@ model DailyTaskRun {
     
     // Failed lock updates for this run
     failedLockUpdates FailedLockUpdate[]
+    
+    // Successful lock updates for this run
+    successfulLockUpdates SuccessfulLockUpdate[]
     
     @@index([startTime])
     @@index([status])
@@ -229,4 +232,35 @@ model FailedLockUpdate {
     @@index([dailyTaskRunId])
     @@index([lockId])
     @@index([retrySuccessful])
+}
+
+model SuccessfulLockUpdate {
+    id                String   @id @default(cuid())
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // Link to the daily task run
+    dailyTaskRun      DailyTaskRun @relation(fields: [dailyTaskRunId], references: [id], onDelete: Cascade)
+    dailyTaskRunId    String
+
+    // Reservation and lock details
+    reservationId     String
+    duveId            String
+    lockId            String
+    propertyName      String
+    fullAddress       String
+    guestName         String
+    startDate         DateTime
+    endDate           DateTime
+    
+    // Lock update details
+    lockCode          String   // The generated lock code
+    lockCodeStart     DateTime // When the lock code starts being valid
+    lockCodeEnd       DateTime // When the lock code expires
+    
+    // Processing time
+    processingTime    Int?     // Time taken to process this update in milliseconds
+    
+    @@index([dailyTaskRunId])
+    @@index([lockId])
 }
