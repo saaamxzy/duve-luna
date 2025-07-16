@@ -75,7 +75,8 @@ export default function LockDetailPage() {
             </svg>
             <p className="mt-4 text-lg font-medium">Lock not found</p>
             <p className="mt-2 text-sm text-gray-600">
-              The lock you&apos;re looking for doesn&apos;t exist or has been removed.
+              The lock you&apos;re looking for doesn&apos;t exist or has been
+              removed.
             </p>
             <Link
               href="/locks"
@@ -344,8 +345,8 @@ export default function LockDetailPage() {
                   No keyboard passwords
                 </p>
                 <p className="mt-2 text-sm text-gray-600">
-                  Keyboard passwords will appear here once they&apos;re configured
-                  for this lock.
+                  Keyboard passwords will appear here once they&apos;re
+                  configured for this lock.
                 </p>
               </div>
             </div>

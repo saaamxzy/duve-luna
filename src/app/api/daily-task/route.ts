@@ -1,7 +1,12 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "../../../server/db";
-import { dailyTask, updateLockCode } from "../../../server/cron/daily";
+import {
+  dailyTask,
+  updateLockCode,
+  prepDailyTask,
+  executeLockCodeUpdates,
+} from "../../../server/cron/daily";
 
 // GET /api/daily-task - Get daily task statistics and recent runs
 export async function GET(request: NextRequest) {
@@ -9,6 +14,34 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") ?? "10");
     const runId = searchParams.get("runId");
+    const prepRunId = searchParams.get("prepRunId");
+
+    // If prepRunId is provided, return prep reservations for that run
+    if (prepRunId) {
+      const prepReservations = await db.prepReservation.findMany({
+        where: { dailyTaskRunId: prepRunId },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const prepRun = await db.dailyTaskRun.findUnique({
+        where: { id: prepRunId },
+      });
+
+      if (!prepRun) {
+        return NextResponse.json(
+          { success: false, error: "Prep run not found" },
+          { status: 404 },
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          prepRun,
+          prepReservations,
+        },
+      });
+    }
 
     // If runId is provided, return detailed information about that specific run
     if (runId) {
@@ -144,6 +177,9 @@ export async function POST(request: NextRequest) {
       action: string;
       taskId?: string;
       failedUpdateIds?: string[];
+      prepRunId?: string;
+      prepReservationIds?: string[];
+      selectedPrepReservations?: { id: string; isSelected: boolean }[];
     };
     const { action, taskId } = body;
 
@@ -321,6 +357,115 @@ export async function POST(request: NextRequest) {
           failureCount,
         },
       });
+    }
+
+    if (action === "prep") {
+      // Check if there's already a running task
+      const runningTask = await db.dailyTaskRun.findFirst({
+        where: { status: "running" },
+      });
+
+      if (runningTask) {
+        return NextResponse.json(
+          { success: false, error: "A daily task is already running" },
+          { status: 400 },
+        );
+      }
+
+      // Trigger the prep daily task
+      try {
+        const prepRunId = await prepDailyTask();
+        return NextResponse.json({
+          success: true,
+          message: "Prep daily task completed successfully",
+          data: { prepRunId },
+        });
+      } catch (error) {
+        console.error("Error in prep daily task:", error);
+        return NextResponse.json(
+          { success: false, error: "Failed to run prep daily task" },
+          { status: 500 },
+        );
+      }
+    }
+
+    if (action === "execute") {
+      const { prepRunId } = body;
+
+      if (!prepRunId) {
+        return NextResponse.json(
+          { success: false, error: "Prep run ID is required" },
+          { status: 400 },
+        );
+      }
+
+      // Check if there's already a running task
+      const runningTask = await db.dailyTaskRun.findFirst({
+        where: { status: "running" },
+      });
+
+      if (runningTask) {
+        return NextResponse.json(
+          { success: false, error: "A daily task is already running" },
+          { status: 400 },
+        );
+      }
+
+      // Trigger the execute lock code updates
+      try {
+        await executeLockCodeUpdates(prepRunId);
+        return NextResponse.json({
+          success: true,
+          message: "Lock code updates completed successfully",
+        });
+      } catch (error) {
+        console.error("Error in execute lock code updates:", error);
+        return NextResponse.json(
+          { success: false, error: "Failed to execute lock code updates" },
+          { status: 500 },
+        );
+      }
+    }
+
+    if (action === "update-prep-selection") {
+      const { selectedPrepReservations } = body;
+
+      if (
+        !Array.isArray(selectedPrepReservations) ||
+        selectedPrepReservations.length === 0
+      ) {
+        return NextResponse.json(
+          { success: false, error: "No prep reservations provided" },
+          { status: 400 },
+        );
+      }
+
+      // Update the selection status of prep reservations
+      try {
+        const updatePromises = selectedPrepReservations.map(
+          ({ id, isSelected }) =>
+            db.prepReservation.update({
+              where: { id },
+              data: { isSelected },
+            }),
+        );
+
+        await Promise.all(updatePromises);
+
+        return NextResponse.json({
+          success: true,
+          message: "Prep reservation selection updated successfully",
+        });
+      } catch (error) {
+        console.error("Error updating prep reservation selection:", error);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Failed to update prep reservation selection",
+          },
+          { status: 500 },
+        );
+      }
     }
 
     return NextResponse.json(

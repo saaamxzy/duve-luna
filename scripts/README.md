@@ -10,15 +10,64 @@ Runs the daily task manually for testing purposes.
 npx tsx scripts/test-daily.ts
 ```
 
+## Lock Profile Management
+
+The lock profile system has been integrated into the daily task. Lock profiles and keyboard passwords are automatically refreshed at the beginning of each daily task run.
+
+### `refresh-lock-profiles.ts`
+Manually refreshes all lock profile data (equivalent to running clear-lock-profiles.ts, populate-lock-profiles.ts, and populate-keyboard-passwords.ts in sequence).
+
+```bash
+npx tsx scripts/refresh-lock-profiles.ts
+```
+
+**Features:**
+- Clears all existing lock profiles and keyboard passwords
+- Fetches latest lock data from Sifely API
+- Populates lock profiles with current lock information
+- Fetches and stores keyboard passwords for each lock
+- Integrated logging with [LockProfileManager] prefix
+
+**Note:** This process is automatically run at the beginning of each daily task, so manual execution is typically only needed for debugging or testing purposes.
+
+### Legacy Scripts (Still Available)
+
+The following individual scripts are still available for debugging purposes:
+
+#### `clear-lock-profiles.ts`
+Clears all lock profiles and keyboard passwords from the database.
+```bash
+npx tsx scripts/clear-lock-profiles.ts
+```
+
+#### `populate-lock-profiles.ts`
+Fetches locks from the Sifely API and populates the lock profiles table.
+```bash
+npx tsx scripts/populate-lock-profiles.ts
+```
+
+#### `populate-keyboard-passwords.ts`
+Fetches keyboard passwords for all locks and populates the keyboard passwords table.
+```bash
+npx tsx scripts/populate-keyboard-passwords.ts
+```
+
+**Migration Note:** Instead of running these three scripts separately, use `refresh-lock-profiles.ts` or let the daily task handle it automatically.
+
 ## Failed Lock Update Scripts
 
-When lock code updates fail during the daily task, they are automatically logged to `logs/failed-lock-updates.json`. The following scripts help manage these failures:
+When lock code updates fail during the daily task, they are automatically logged to the database. The following scripts help manage these failures:
 
 ### `view-failed-locks.ts`
 Displays all failed lock updates without attempting to retry them.
 ```bash
 npx tsx scripts/view-failed-locks.ts
 ```
+
+**Features:**
+- Reads failed lock updates from the database (primary source)
+- Fallback to file system for backward compatibility
+- Works in serverless environments (Vercel, AWS Lambda, etc.)
 
 **Output example:**
 ```
@@ -42,11 +91,13 @@ npx tsx scripts/retry-failed-locks.ts
 ```
 
 **Features:**
+- Reads failed lock updates from the database (primary source)
 - Generates new lock codes for each retry
 - Skips locks with "unknown" lockId (cannot be retried)
 - Provides detailed progress and results
-- Saves retry results to `logs/retry-results.json`
-- Updates the failed locks file to remove successfully retried locks
+- Removes successfully retried locks from the database
+- Fallback to file system for backward compatibility
+- Works in serverless environments (Vercel, AWS Lambda, etc.)
 
 **Output example:**
 ```
@@ -64,17 +115,27 @@ Lock ID: 7706256, Reservation ID: def456
 Total attempted: 2
 Successful: 1
 Failed: 1
-Results saved to: logs/retry-results.json
-Updated failed locks file - 1 locks still failed
+Database updated - 1 locks still failed
 ```
+
+## Serverless Environment Support
+
+The failed lock update system now works seamlessly in serverless environments:
+
+- **Database-first approach**: Failed locks are stored in the database
+- **File system fallback**: Maintains backward compatibility with existing file-based logs
+- **Automatic detection**: Skips file operations in serverless environments (Vercel, AWS Lambda, etc.)
+- **No file system errors**: Prevents `ENOENT` errors in read-only file systems
 
 ## File Structure
 
 ```
-logs/
-├── failed-lock-updates.json    # Failed lock updates from daily task
-└── retry-results.json          # Results from retry attempts
+logs/                            # Only used in non-serverless environments
+├── failed-lock-updates.json    # Fallback storage for failed lock updates
+└── retry-results.json          # Results from retry attempts (file-based only)
 ```
+
+**Note**: In serverless environments, all failed lock data is stored in the database, eliminating the need for file system access.
 
 ## Daily Task Summary
 

@@ -40,12 +40,38 @@ interface DailyTaskRun {
   endTime: string | null;
   duration: number | null;
   status: string;
+  taskType: string;
   totalReservations: number;
   successfulUpdates: number;
   failedUpdates: number;
   error: string | null;
   failedLockUpdates: FailedLockUpdate[];
   successfulLockUpdates: SuccessfulLockUpdate[];
+}
+
+interface PrepReservation {
+  id: string;
+  reservationId: string;
+  duveId: string;
+  propertyName: string;
+  fullAddress: string;
+  guestName: string;
+  startDate: string;
+  endDate: string;
+  lockId: string | null;
+  lockName: string | null;
+  streetNumber: string;
+  currentLockCode: string | null;
+  isSelected: boolean;
+  canUpdate: boolean;
+  reasonCannotUpdate: string | null;
+  processed: boolean;
+  processedAt: string | null;
+}
+
+interface PrepTaskData {
+  prepRun: DailyTaskRun;
+  prepReservations: PrepReservation[];
 }
 
 interface DailyTaskData {
@@ -85,6 +111,12 @@ export default function DailyTaskPage() {
   const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
   const [isKillingTask, setIsKillingTask] = useState(false);
 
+  // Prep phase state
+  const [prepData, setPrepData] = useState<PrepTaskData | null>(null);
+  const [isPrepPhase, setIsPrepPhase] = useState(false);
+  const [isPrepping, setIsPrepping] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+
   // Fetch daily task data
   const fetchData = async () => {
     try {
@@ -96,14 +128,14 @@ export default function DailyTaskPage() {
       } else {
         setError(result.error ?? "Failed to fetch data");
       }
-          } catch (err) {
-        setError("Failed to fetch data");
-      } finally {
+    } catch {
+      setError("Failed to fetch data");
+    } finally {
       setLoading(false);
     }
   };
 
-  // Trigger daily task
+  // Trigger daily task (legacy - full process)
   const triggerDailyTask = async () => {
     const confirmTrigger = confirm(
       "Are you sure you want to trigger the daily task? This will process all reservations and update lock codes. This action cannot be undone.",
@@ -127,11 +159,168 @@ export default function DailyTaskPage() {
       } else {
         alert(result.error ?? "Failed to trigger task");
       }
-          } catch (err) {
-        alert("Failed to trigger task");
-      } finally {
+    } catch {
+      alert("Failed to trigger task");
+    } finally {
       setIsTriggeringTask(false);
     }
+  };
+
+  // Prep daily task
+  const prepDailyTask = async () => {
+    const confirmPrep = confirm(
+      "Are you sure you want to prep the daily task? This will fetch reservations and update lock profiles without making any lock code changes.",
+    );
+
+    if (!confirmPrep) return;
+
+    setIsPrepping(true);
+    try {
+      const response = await fetch("/api/daily-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "prep" }),
+      });
+
+      const result = (await response.json()) as DailyTaskApiResponse & {
+        data?: { prepRunId: string };
+      };
+
+      if (result.success && result.data?.prepRunId) {
+        alert("Prep daily task completed successfully!");
+        // Fetch prep data
+        await fetchPrepData(result.data.prepRunId);
+        setIsPrepPhase(true);
+        void fetchData(); // Refresh data
+      } else {
+        alert(result.error ?? "Failed to prep task");
+      }
+    } catch {
+      alert("Failed to prep task");
+    } finally {
+      setIsPrepping(false);
+    }
+  };
+
+  // Fetch prep data
+  const fetchPrepData = async (prepRunId: string) => {
+    try {
+      const response = await fetch(`/api/daily-task?prepRunId=${prepRunId}`);
+      const result = (await response.json()) as DailyTaskApiResponse & {
+        data?: PrepTaskData;
+      };
+
+      if (result.success && result.data) {
+        setPrepData(result.data);
+      } else {
+        alert(result.error ?? "Failed to fetch prep data");
+      }
+    } catch {
+      alert("Failed to fetch prep data");
+    }
+  };
+
+  // Execute lock code updates
+  const executeLockCodeUpdates = async () => {
+    if (!prepData) return;
+
+    const selectedCount = prepData.prepReservations.filter(
+      (r) => r.isSelected && r.canUpdate,
+    ).length;
+
+    if (selectedCount === 0) {
+      alert("No reservations selected for update");
+      return;
+    }
+
+    const confirmExecute = confirm(
+      `Are you sure you want to update lock codes for ${selectedCount} selected reservations? This action cannot be undone.`,
+    );
+
+    if (!confirmExecute) return;
+
+    setIsExecuting(true);
+    try {
+      const response = await fetch("/api/daily-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "execute",
+          prepRunId: prepData.prepRun.id,
+        }),
+      });
+
+      const result = (await response.json()) as DailyTaskApiResponse;
+
+      if (result.success) {
+        alert("Lock code updates completed successfully!");
+        setIsPrepPhase(false);
+        setPrepData(null);
+        void fetchData(); // Refresh data
+      } else {
+        alert(result.error ?? "Failed to execute lock code updates");
+      }
+    } catch {
+      alert("Failed to execute lock code updates");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  // Update prep reservation selection
+  const updatePrepSelection = async (
+    reservationId: string,
+    isSelected: boolean,
+  ) => {
+    if (!prepData) return;
+
+    // Update local state immediately
+    setPrepData({
+      ...prepData,
+      prepReservations: prepData.prepReservations.map((r) =>
+        r.id === reservationId ? { ...r, isSelected } : r,
+      ),
+    });
+
+    // Update server
+    try {
+      const response = await fetch("/api/daily-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update-prep-selection",
+          selectedPrepReservations: [{ id: reservationId, isSelected }],
+        }),
+      });
+
+      const result = (await response.json()) as DailyTaskApiResponse;
+
+      if (!result.success) {
+        console.error("Failed to update prep selection:", result.error);
+        // Revert local state on failure
+        setPrepData({
+          ...prepData,
+          prepReservations: prepData.prepReservations.map((r) =>
+            r.id === reservationId ? { ...r, isSelected: !isSelected } : r,
+          ),
+        });
+      }
+    } catch {
+      console.error("Failed to update prep selection");
+      // Revert local state on failure
+      setPrepData({
+        ...prepData,
+        prepReservations: prepData.prepReservations.map((r) =>
+          r.id === reservationId ? { ...r, isSelected: !isSelected } : r,
+        ),
+      });
+    }
+  };
+
+  // Cancel prep phase
+  const cancelPrepPhase = () => {
+    setIsPrepPhase(false);
+    setPrepData(null);
   };
 
   // Kill running task
@@ -160,9 +349,9 @@ export default function DailyTaskPage() {
       } else {
         alert(result.error ?? "Failed to kill task");
       }
-          } catch (err) {
-        alert("Failed to kill task");
-      } finally {
+    } catch {
+      alert("Failed to kill task");
+    } finally {
       setIsKillingTask(false);
     }
   };
@@ -194,9 +383,9 @@ export default function DailyTaskPage() {
       } else {
         alert(result.error ?? "Failed to retry updates");
       }
-          } catch (err) {
-        alert("Failed to retry updates");
-      } finally {
+    } catch {
+      alert("Failed to retry updates");
+    } finally {
       setIsRetrying(false);
     }
   };
@@ -238,9 +427,9 @@ export default function DailyTaskPage() {
       } else {
         alert(result.error ?? "Failed to fetch run details");
       }
-          } catch (err) {
-        alert("Failed to fetch run details");
-      } finally {
+    } catch {
+      alert("Failed to fetch run details");
+    } finally {
       setIsLoadingRunDetails(false);
     }
   };
@@ -352,13 +541,54 @@ export default function DailyTaskPage() {
             >
               Refresh
             </button>
-            <button
-              onClick={triggerDailyTask}
-              className="w-full rounded-md bg-green-500 px-4 py-2 text-white hover:bg-green-600 disabled:opacity-50 sm:w-auto"
-              disabled={isTriggeringTask || !!data.runningTask}
-            >
-              {isTriggeringTask ? "Triggering..." : "Trigger Daily Task"}
-            </button>
+
+            {!isPrepPhase && (
+              <>
+                <button
+                  onClick={prepDailyTask}
+                  className="w-full rounded-md bg-purple-500 px-4 py-2 text-white hover:bg-purple-600 disabled:opacity-50 sm:w-auto"
+                  disabled={isPrepping || !!data.runningTask}
+                >
+                  {isPrepping ? "Prepping..." : "Prep Daily Task"}
+                </button>
+                <button
+                  onClick={triggerDailyTask}
+                  className="w-full rounded-md bg-green-500 px-4 py-2 text-white hover:bg-green-600 disabled:opacity-50 sm:w-auto"
+                  disabled={isTriggeringTask || !!data.runningTask}
+                >
+                  {isTriggeringTask
+                    ? "Triggering..."
+                    : "Trigger Daily Task (Legacy)"}
+                </button>
+              </>
+            )}
+
+            {isPrepPhase && prepData && (
+              <>
+                <button
+                  onClick={executeLockCodeUpdates}
+                  className="w-full rounded-md bg-green-500 px-4 py-2 text-white hover:bg-green-600 disabled:opacity-50 sm:w-auto"
+                  disabled={
+                    isExecuting ||
+                    prepData.prepReservations.filter(
+                      (r) => r.isSelected && r.canUpdate,
+                    ).length === 0
+                  }
+                >
+                  {isExecuting
+                    ? "Updating..."
+                    : `Update Lock Codes (${prepData.prepReservations.filter((r) => r.isSelected && r.canUpdate).length})`}
+                </button>
+                <button
+                  onClick={cancelPrepPhase}
+                  className="w-full rounded-md bg-gray-500 px-4 py-2 text-white hover:bg-gray-600 disabled:opacity-50 sm:w-auto"
+                  disabled={isExecuting}
+                >
+                  Cancel Prep
+                </button>
+              </>
+            )}
+
             {data.runningTask && (
               <button
                 onClick={killRunningTask}
@@ -421,6 +651,197 @@ export default function DailyTaskPage() {
           </div>
         </div>
 
+        {/* Prep Phase - Reservation Selection */}
+        {isPrepPhase && prepData && (
+          <div className="rounded-lg border bg-white shadow-sm">
+            <div className="border-b px-4 py-4 sm:px-6">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Prep Phase - Select Reservations to Update
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Select which reservations should have their lock codes updated.
+                Only reservations that can be updated are selectable.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 text-sm">
+                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-green-800">
+                  Can Update:{" "}
+                  {prepData.prepReservations.filter((r) => r.canUpdate).length}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-red-800">
+                  Cannot Update:{" "}
+                  {prepData.prepReservations.filter((r) => !r.canUpdate).length}
+                </span>
+                <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-blue-800">
+                  Selected:{" "}
+                  {
+                    prepData.prepReservations.filter(
+                      (r) => r.isSelected && r.canUpdate,
+                    ).length
+                  }
+                </span>
+              </div>
+            </div>
+
+            {/* Mobile: Card layout */}
+            <div className="block sm:hidden">
+              <div className="divide-y divide-gray-200">
+                {prepData.prepReservations.map((reservation) => (
+                  <div key={reservation.id} className="p-4">
+                    <div className="flex items-start space-x-3">
+                      <input
+                        type="checkbox"
+                        checked={reservation.isSelected}
+                        onChange={(e) =>
+                          updatePrepSelection(reservation.id, e.target.checked)
+                        }
+                        disabled={!reservation.canUpdate}
+                        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900">
+                            {reservation.propertyName}
+                          </p>
+                          <div className="flex items-center space-x-2">
+                            {reservation.canUpdate ? (
+                              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
+                                Can Update
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs text-red-800">
+                                Cannot Update
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {reservation.fullAddress}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-900">
+                          Guest: {reservation.guestName}
+                        </p>
+                        <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
+                          <span>
+                            Check-in: {formatDate(reservation.startDate)}
+                          </span>
+                          <span>
+                            Check-out: {formatDate(reservation.endDate)}
+                          </span>
+                        </div>
+                        {reservation.lockId && (
+                          <p className="mt-1 font-mono text-xs text-gray-500">
+                            Lock ID: {reservation.lockId}
+                          </p>
+                        )}
+                        {!reservation.canUpdate &&
+                          reservation.reasonCannotUpdate && (
+                            <p className="mt-2 text-sm text-red-600">
+                              {reservation.reasonCannotUpdate}
+                            </p>
+                          )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop: Table layout */}
+            <div className="hidden sm:block">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Select
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Property
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Guest
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Check-in
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Check-out
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Lock ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {prepData.prepReservations.map((reservation) => (
+                      <tr
+                        key={reservation.id}
+                        className={reservation.canUpdate ? "" : "bg-gray-50"}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={reservation.isSelected}
+                            onChange={(e) =>
+                              updatePrepSelection(
+                                reservation.id,
+                                e.target.checked,
+                              )
+                            }
+                            disabled={!reservation.canUpdate}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                          />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {reservation.propertyName}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {reservation.fullAddress}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm whitespace-nowrap text-gray-900">
+                          {reservation.guestName}
+                        </td>
+                        <td className="px-6 py-4 text-sm whitespace-nowrap text-gray-900">
+                          {formatDate(reservation.startDate)}
+                        </td>
+                        <td className="px-6 py-4 text-sm whitespace-nowrap text-gray-900">
+                          {formatDate(reservation.endDate)}
+                        </td>
+                        <td className="px-6 py-4 font-mono text-sm whitespace-nowrap text-gray-900">
+                          {reservation.lockId ?? "N/A"}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {reservation.canUpdate ? (
+                            <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                              Can Update
+                            </span>
+                          ) : (
+                            <div>
+                              <span className="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                                Cannot Update
+                              </span>
+                              {reservation.reasonCannotUpdate && (
+                                <div className="mt-1 text-xs text-red-600">
+                                  {reservation.reasonCannotUpdate}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent Runs - Mobile-friendly */}
         <div className="rounded-lg border bg-white shadow-sm">
           <div className="border-b px-4 py-4 sm:px-6">
@@ -460,6 +881,21 @@ export default function DailyTaskPage() {
                           }`}
                         >
                           {run.status}
+                        </span>
+                        <span
+                          className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
+                            run.taskType === "prep"
+                              ? "bg-purple-100 text-purple-800"
+                              : run.taskType === "execute"
+                                ? "bg-green-100 text-green-800"
+                                : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {run.taskType === "prep"
+                            ? "Prep"
+                            : run.taskType === "execute"
+                              ? "Execute"
+                              : "Full"}
                         </span>
                         <span className="text-sm text-gray-500">
                           {run.duration ? formatDuration(run.duration) : "N/A"}
@@ -503,6 +939,9 @@ export default function DailyTaskPage() {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
+                      Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
                       Duration
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">
@@ -542,6 +981,23 @@ export default function DailyTaskPage() {
                           }`}
                         >
                           {run.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                            run.taskType === "prep"
+                              ? "bg-purple-100 text-purple-800"
+                              : run.taskType === "execute"
+                                ? "bg-green-100 text-green-800"
+                                : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {run.taskType === "prep"
+                            ? "Prep"
+                            : run.taskType === "execute"
+                              ? "Execute"
+                              : "Full"}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm whitespace-nowrap text-gray-900">

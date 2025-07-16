@@ -181,6 +181,9 @@ model DailyTaskRun {
     duration          Int?     // Duration in milliseconds
     status            String   // "running", "completed", "failed", "killed"
     
+    // Task type and phase
+    taskType          String   @default("full")  // "full", "prep", "execute"
+    
     // Task statistics
     totalReservations Int      @default(0)
     successfulUpdates Int      @default(0)
@@ -196,8 +199,51 @@ model DailyTaskRun {
     // Successful lock updates for this run
     successfulLockUpdates SuccessfulLockUpdate[]
     
+    // Prep task reservations
+    prepReservations PrepReservation[]
+    
     @@index([startTime])
     @@index([status])
+    @@index([taskType])
+}
+
+model PrepReservation {
+    id                String   @id @default(cuid())
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    // Link to the daily task run
+    dailyTaskRun      DailyTaskRun @relation(fields: [dailyTaskRunId], references: [id], onDelete: Cascade)
+    dailyTaskRunId    String
+
+    // Reservation details
+    reservationId     String   // ID from our database
+    duveId            String   // Duve reservation ID
+    propertyName      String
+    fullAddress       String
+    guestName         String
+    startDate         DateTime
+    endDate           DateTime
+    
+    // Lock information
+    lockId            String?  // Will be null if no lock found
+    lockName          String?  // Lock name from property parsing
+    streetNumber      String   // Street number from property parsing
+    currentLockCode   String?  // Current lock code if available
+    
+    // Selection status
+    isSelected        Boolean  @default(true)   // Whether user wants to update this
+    canUpdate         Boolean  @default(false)  // Whether this reservation can be updated
+    reasonCannotUpdate String? // Reason if canUpdate is false
+    
+    // Processing status
+    processed         Boolean  @default(false)  // Whether this has been processed in execute phase
+    processedAt       DateTime?
+    
+    @@index([dailyTaskRunId])
+    @@index([reservationId])
+    @@index([isSelected])
+    @@index([processed])
 }
 
 model FailedLockUpdate {

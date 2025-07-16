@@ -99,7 +99,7 @@ export default function ConfigPage() {
           text: data.error ?? "Failed to save configuration",
         });
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: "error", text: "Failed to save configuration" });
     } finally {
       setSaving(false);

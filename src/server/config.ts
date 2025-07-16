@@ -98,19 +98,96 @@ export class ConfigService {
   }
 }
 
+// Configuration cache to avoid repeated database queries
+const configCache = new Map<string, { value: string; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
+
 /**
- * Helper function to get configuration values with fallback to environment variables
- * This is used during the migration period
+ * Get configuration value with fallback to environment variable
+ * Uses caching to avoid repeated database queries
  */
 export async function getConfigWithFallback(
-  key: ConfigKey,
+  key: string,
 ): Promise<string | null> {
-  // First try to get from database
-  const dbValue = await ConfigService.get(key);
-  if (dbValue) {
-    return dbValue;
+  const now = Date.now();
+  const cached = configCache.get(key);
+
+  // Return cached value if still valid
+  if (cached && now - cached.timestamp < CACHE_TTL) {
+    return cached.value;
   }
 
-  // Fallback to environment variable
-  return process.env[key] ?? null;
+  try {
+    const config = await db.configuration.findUnique({
+      where: { key },
+    });
+
+    const value = config?.value ?? process.env[key] ?? null;
+
+    // Cache the result
+    if (value) {
+      configCache.set(key, { value, timestamp: now });
+    }
+
+    return value;
+  } catch (error) {
+    console.error(`Error fetching config for key ${key}:`, error);
+    return process.env[key] ?? null;
+  }
 }
+
+/**
+ * Clear configuration cache - useful for testing or when config changes
+ */
+export function clearConfigCache(): void {
+  configCache.clear();
+}
+
+/**
+ * Pre-warm the configuration cache with commonly used values
+ */
+export async function prewarmConfigCache(): Promise<void> {
+  const commonKeys = ["DUVE_CSRF_TOKEN", "DUVE_COOKIE", "SIFELY_AUTH_TOKEN"];
+
+  console.log("Pre-warming configuration cache...");
+
+  const promises = commonKeys.map((key) =>
+    getConfigWithFallback(key).catch((error) => {
+      console.warn(`Failed to pre-warm config for ${key}:`, error);
+      return null;
+    }),
+  );
+
+  await Promise.allSettled(promises);
+  console.log(
+    `Configuration cache pre-warmed with ${configCache.size} entries`,
+  );
+}
+
+/**
+ * Vercel-specific optimizations
+ */
+export const VERCEL_OPTIMIZATIONS = {
+  // Smaller batch sizes for Vercel to avoid memory limits
+  BATCH_SIZE: process.env.VERCEL ? 5 : 10,
+
+  // Longer timeouts for API calls on Vercel due to cold starts
+  API_TIMEOUT: process.env.VERCEL ? 30000 : 15000,
+
+  // Connection pool settings for Vercel
+  DB_CONNECTION_LIMIT: process.env.VERCEL ? 3 : 10,
+
+  // Enable connection pooling optimizations
+  USE_CONNECTION_POOLING:
+    process.env.VERCEL ?? process.env.NODE_ENV === "production",
+
+  // Cache settings
+  ENABLE_CACHING: true,
+  CACHE_TTL: process.env.VERCEL ? 10 * 60 * 1000 : 5 * 60 * 1000, // 10 minutes on Vercel
+
+  // Rate limiting for external APIs
+  API_RATE_LIMIT_DELAY: process.env.VERCEL ? 200 : 100, // ms between API calls
+
+  // Memory optimization
+  ENABLE_MEMORY_OPTIMIZATION: process.env.VERCEL ?? false,
+};
