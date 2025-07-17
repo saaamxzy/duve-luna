@@ -279,6 +279,7 @@ export async function POST(request: NextRequest) {
       }
 
       const retryResults = [];
+      const createdSuccessfulUpdates = [];
       let successCount = 0;
       let failureCount = 0;
 
@@ -296,17 +297,41 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
+          // Generate new lock code
+          const lockCode = Math.floor(1000 + Math.random() * 9000).toString();
+          
           // Retry the lock code update
+          const startTime = Date.now();
           const result = await updateLockCode(
             failedUpdate.lockId,
-            Math.floor(1000 + Math.random() * 9000).toString(), // Generate new code
+            lockCode,
             failedUpdate.startDate,
             failedUpdate.endDate,
             failedUpdate.duveId,
           );
+          const processingTime = Date.now() - startTime;
 
           if (result.success) {
-            // Update the database record
+            // Create a successful lock update record
+            const successfulUpdate = await db.successfulLockUpdate.create({
+              data: {
+                dailyTaskRunId: failedUpdate.dailyTaskRunId,
+                reservationId: failedUpdate.reservationId,
+                duveId: failedUpdate.duveId,
+                lockId: failedUpdate.lockId,
+                propertyName: failedUpdate.propertyName,
+                fullAddress: failedUpdate.fullAddress,
+                guestName: failedUpdate.guestName,
+                startDate: failedUpdate.startDate,
+                endDate: failedUpdate.endDate,
+                lockCode: lockCode,
+                lockCodeStart: failedUpdate.startDate,
+                lockCodeEnd: failedUpdate.endDate,
+                processingTime: processingTime,
+              },
+            });
+
+            // Mark the failed update as successful
             await db.failedLockUpdate.update({
               where: { id: failedUpdate.id },
               data: {
@@ -316,9 +341,11 @@ export async function POST(request: NextRequest) {
               },
             });
 
+            createdSuccessfulUpdates.push(successfulUpdate);
             retryResults.push({
               id: failedUpdate.id,
               success: true,
+              successfulUpdateId: successfulUpdate.id,
             });
             successCount++;
           } else {
@@ -353,8 +380,35 @@ export async function POST(request: NextRequest) {
         message: `Retry completed: ${successCount} successful, ${failureCount} failed`,
         data: {
           retryResults,
+          createdSuccessfulUpdates,
           successCount,
           failureCount,
+        },
+      });
+    }
+
+    if (action === "delete-failed") {
+      const { failedUpdateIds } = body;
+
+      if (!Array.isArray(failedUpdateIds) || failedUpdateIds.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "No failed update IDs provided" },
+          { status: 400 },
+        );
+      }
+
+      // Delete the failed lock updates
+      const deleteResult = await db.failedLockUpdate.deleteMany({
+        where: {
+          id: { in: failedUpdateIds },
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `${deleteResult.count} failed updates deleted successfully`,
+        data: {
+          deletedCount: deleteResult.count,
         },
       });
     }

@@ -16,6 +16,7 @@ interface FailedLockUpdate {
   endDate: string;
   duveId: string;
   reservationId: string;
+  retrySuccessful?: boolean;
 }
 
 interface SuccessfulLockUpdate {
@@ -96,6 +97,32 @@ interface DailyTaskRunDetailResponse {
   error?: string;
 }
 
+interface RetryApiResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    retryResults: Array<{
+      id: string;
+      success: boolean;
+      successfulUpdateId?: string;
+      error?: string;
+    }>;
+    createdSuccessfulUpdates: SuccessfulLockUpdate[];
+    successCount: number;
+    failureCount: number;
+  };
+  error?: string;
+}
+
+interface DeleteFailedApiResponse {
+  success: boolean;
+  message?: string;
+  data?: {
+    deletedCount: number;
+  };
+  error?: string;
+}
+
 export default function DailyTaskPage() {
   const [data, setData] = useState<DailyTaskData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +131,7 @@ export default function DailyTaskPage() {
     [],
   );
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isDeletingFailed, setIsDeletingFailed] = useState(false);
   const [isTriggeringTask, setIsTriggeringTask] = useState(false);
   const [selectedRun, setSelectedRun] = useState<DailyTaskRun | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -374,10 +402,14 @@ export default function DailyTaskPage() {
         }),
       });
 
-      const result = (await response.json()) as DailyTaskApiResponse;
+      const result = (await response.json()) as RetryApiResponse;
 
       if (result.success) {
-        alert(result.message);
+        // Show success message with retry results
+        const successCount = result.data?.successCount ?? 0;
+        const failureCount = result.data?.failureCount ?? 0;
+        alert(`Retry completed: ${successCount} successful, ${failureCount} failed`);
+        
         setSelectedFailedUpdates([]);
         void fetchData(); // Refresh data
       } else {
@@ -387,6 +419,46 @@ export default function DailyTaskPage() {
       alert("Failed to retry updates");
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  // Delete failed lock updates
+  const deleteFailedUpdates = async () => {
+    if (selectedFailedUpdates.length === 0) {
+      alert("Please select at least one failed update to delete");
+      return;
+    }
+
+    const confirmDelete = confirm(
+      `Are you sure you want to delete ${selectedFailedUpdates.length} failed update(s)? This action cannot be undone.`,
+    );
+
+    if (!confirmDelete) return;
+
+    setIsDeletingFailed(true);
+    try {
+      const response = await fetch("/api/daily-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete-failed",
+          failedUpdateIds: selectedFailedUpdates,
+        }),
+      });
+
+      const result = (await response.json()) as DeleteFailedApiResponse;
+
+      if (result.success) {
+        alert(result.message ?? "Failed updates deleted successfully");
+        setSelectedFailedUpdates([]);
+        void fetchData(); // Refresh data
+      } else {
+        alert(result.error ?? "Failed to delete updates");
+      }
+    } catch {
+      alert("Failed to delete updates");
+    } finally {
+      setIsDeletingFailed(false);
     }
   };
 
@@ -1053,6 +1125,13 @@ export default function DailyTaskPage() {
                       ? "Retrying..."
                       : `Retry Selected (${selectedFailedUpdates.length})`}
                   </button>
+                  <button
+                    onClick={deleteFailedUpdates}
+                    className="w-full rounded-md bg-red-500 px-4 py-2 text-white hover:bg-red-600 disabled:opacity-50 sm:w-auto"
+                    disabled={isDeletingFailed || selectedFailedUpdates.length === 0}
+                  >
+                    {isDeletingFailed ? "Deleting..." : "Delete Selected"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -1268,46 +1347,67 @@ export default function DailyTaskPage() {
 
                           {/* Mobile: Card layout */}
                           <div className="block space-y-3 sm:hidden">
-                            {runDetails.successfulLockUpdates.map((update) => (
-                              <div
-                                key={update.id}
-                                className="rounded border bg-white p-3"
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <p className="font-medium text-gray-900">
-                                      {update.propertyName}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      {update.fullAddress}
-                                    </p>
-                                    <p className="text-sm text-gray-900">
-                                      Guest: {update.guestName}
-                                    </p>
+                            {runDetails.successfulLockUpdates.map((update) => {
+                              // Check if this update was created from a retry
+                              const isFromRetry = runDetails.failedLockUpdates.some(
+                                (failedUpdate) => 
+                                  failedUpdate.lockId === update.lockId &&
+                                  failedUpdate.reservationId === update.reservationId &&
+                                  failedUpdate.retrySuccessful
+                              );
+                              
+                              return (
+                                <div
+                                  key={update.id}
+                                  className="rounded border bg-white p-3"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center space-x-2">
+                                        <p className="font-medium text-gray-900">
+                                          {update.propertyName}
+                                        </p>
+                                        {isFromRetry ? (
+                                          <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800">
+                                            From Retry
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
+                                            Original
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-sm text-gray-600">
+                                        {update.fullAddress}
+                                      </p>
+                                      <p className="text-sm text-gray-900">
+                                        Guest: {update.guestName}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="font-mono text-sm text-gray-700">
+                                        {update.lockId}
+                                      </p>
+                                      <p className="font-mono text-sm font-bold text-green-700">
+                                        {update.lockCode}
+                                      </p>
+                                    </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="font-mono text-sm text-gray-700">
-                                      {update.lockId}
+                                  <div className="mt-2 text-xs text-gray-500">
+                                    <p>
+                                      Check-in: {formatDate(update.startDate)}
                                     </p>
-                                    <p className="font-mono text-sm font-bold text-green-700">
-                                      {update.lockCode}
+                                    <p>Check-out: {formatDate(update.endDate)}</p>
+                                    <p>
+                                      Processing:{" "}
+                                      {update.processingTime
+                                        ? `${update.processingTime}ms`
+                                        : "N/A"}
                                     </p>
                                   </div>
                                 </div>
-                                <div className="mt-2 text-xs text-gray-500">
-                                  <p>
-                                    Check-in: {formatDate(update.startDate)}
-                                  </p>
-                                  <p>Check-out: {formatDate(update.endDate)}</p>
-                                  <p>
-                                    Processing:{" "}
-                                    {update.processingTime
-                                      ? `${update.processingTime}ms`
-                                      : "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
 
                           {/* Desktop: Table layout */}
@@ -1333,50 +1433,75 @@ export default function DailyTaskPage() {
                                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">
                                     Check-out
                                   </th>
-                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">
-                                    Processing Time
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {runDetails.successfulLockUpdates.map(
-                                  (update) => (
-                                    <tr
-                                      key={update.id}
-                                      className="border-b border-green-200"
-                                    >
-                                      <td className="px-4 py-2">
-                                        <div className="font-medium">
-                                          {update.propertyName}
-                                        </div>
-                                        <div className="text-sm text-gray-600">
-                                          {update.fullAddress}
-                                        </div>
-                                      </td>
-                                      <td className="px-4 py-2">
-                                        {update.guestName}
-                                      </td>
-                                      <td className="px-4 py-2 font-mono text-sm">
-                                        {update.lockId}
-                                      </td>
-                                      <td className="px-4 py-2 font-mono text-sm font-bold text-green-700">
-                                        {update.lockCode}
-                                      </td>
-                                      <td className="px-4 py-2 text-sm">
-                                        {formatDate(update.startDate)}
-                                      </td>
-                                      <td className="px-4 py-2 text-sm">
-                                        {formatDate(update.endDate)}
-                                      </td>
-                                      <td className="px-4 py-2 text-sm">
-                                        {update.processingTime
-                                          ? `${update.processingTime}ms`
-                                          : "N/A"}
-                                      </td>
-                                    </tr>
-                                  ),
-                                )}
-                              </tbody>
+                                                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">
+                                      Processing Time
+                                    </th>
+                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">
+                                      Status
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {runDetails.successfulLockUpdates.map(
+                                    (update) => {
+                                      // Check if this update was created from a retry
+                                      // We can determine this by checking if there's a failed update with same details
+                                      const isFromRetry = runDetails.failedLockUpdates.some(
+                                        (failedUpdate) => 
+                                          failedUpdate.lockId === update.lockId &&
+                                          failedUpdate.reservationId === update.reservationId &&
+                                          failedUpdate.retrySuccessful
+                                      );
+                                      
+                                      return (
+                                        <tr
+                                          key={update.id}
+                                          className="border-b border-green-200"
+                                        >
+                                          <td className="px-4 py-2">
+                                            <div className="font-medium">
+                                              {update.propertyName}
+                                            </div>
+                                            <div className="text-sm text-gray-600">
+                                              {update.fullAddress}
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-2">
+                                            {update.guestName}
+                                          </td>
+                                          <td className="px-4 py-2 font-mono text-sm">
+                                            {update.lockId}
+                                          </td>
+                                          <td className="px-4 py-2 font-mono text-sm font-bold text-green-700">
+                                            {update.lockCode}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            {formatDate(update.startDate)}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            {formatDate(update.endDate)}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            {update.processingTime
+                                              ? `${update.processingTime}ms`
+                                              : "N/A"}
+                                          </td>
+                                          <td className="px-4 py-2 text-sm">
+                                            {isFromRetry ? (
+                                              <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs text-blue-800">
+                                                From Retry
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs text-green-800">
+                                                Original
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      );
+                                    },
+                                  )}
+                                </tbody>
                             </table>
                           </div>
                         </div>
