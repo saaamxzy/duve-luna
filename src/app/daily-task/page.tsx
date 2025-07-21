@@ -139,6 +139,11 @@ export default function DailyTaskPage() {
   const [isLoadingRunDetails, setIsLoadingRunDetails] = useState(false);
   const [isKillingTask, setIsKillingTask] = useState(false);
 
+  // Modal-specific retry state
+  const [selectedModalFailedUpdates, setSelectedModalFailedUpdates] = useState<string[]>([]);
+  const [isModalRetrying, setIsModalRetrying] = useState(false);
+  const [isModalDeleting, setIsModalDeleting] = useState(false);
+
   // Prep phase state
   const [prepData, setPrepData] = useState<PrepTaskData | null>(null);
   const [isPrepPhase, setIsPrepPhase] = useState(false);
@@ -518,6 +523,114 @@ export default function DailyTaskPage() {
     setIsModalOpen(false);
     setSelectedRun(null);
     setRunDetails(null);
+    setSelectedModalFailedUpdates([]);
+  };
+
+  // Modal-specific retry functions
+  const retryModalFailedUpdates = async () => {
+    if (selectedModalFailedUpdates.length === 0) {
+      alert("Please select at least one failed update to retry");
+      return;
+    }
+
+    setIsModalRetrying(true);
+    try {
+      const response = await fetch("/api/daily-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "retry-failed",
+          failedUpdateIds: selectedModalFailedUpdates,
+        }),
+      });
+
+      const result = (await response.json()) as RetryApiResponse;
+
+      if (result.success) {
+        const successCount = result.data?.successCount ?? 0;
+        const failureCount = result.data?.failureCount ?? 0;
+        alert(`Retry completed: ${successCount} successful, ${failureCount} failed`);
+        
+        setSelectedModalFailedUpdates([]);
+        // Refresh both the modal data and the main page data
+        if (selectedRun) {
+          await fetchRunDetails(selectedRun.id);
+        }
+        void fetchData();
+      } else {
+        alert(result.error ?? "Failed to retry updates");
+      }
+    } catch {
+      alert("Failed to retry updates");
+    } finally {
+      setIsModalRetrying(false);
+    }
+  };
+
+  const deleteModalFailedUpdates = async () => {
+    if (selectedModalFailedUpdates.length === 0) {
+      alert("Please select at least one failed update to delete");
+      return;
+    }
+
+    const confirmDelete = confirm(
+      `Are you sure you want to delete ${selectedModalFailedUpdates.length} failed update(s)? This action cannot be undone.`,
+    );
+
+    if (!confirmDelete) return;
+
+    setIsModalDeleting(true);
+    try {
+      const response = await fetch("/api/daily-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete-failed",
+          failedUpdateIds: selectedModalFailedUpdates,
+        }),
+      });
+
+      const result = (await response.json()) as DeleteFailedApiResponse;
+
+      if (result.success) {
+        alert(result.message ?? "Failed updates deleted successfully");
+        setSelectedModalFailedUpdates([]);
+        // Refresh both the modal data and the main page data
+        if (selectedRun) {
+          await fetchRunDetails(selectedRun.id);
+        }
+        void fetchData();
+      } else {
+        alert(result.error ?? "Failed to delete updates");
+      }
+    } catch {
+      alert("Failed to delete updates");
+    } finally {
+      setIsModalDeleting(false);
+    }
+  };
+
+  // Modal-specific selection functions
+  const toggleModalFailedUpdate = (updateId: string) => {
+    setSelectedModalFailedUpdates((prev) =>
+      prev.includes(updateId)
+        ? prev.filter((id) => id !== updateId)
+        : [...prev, updateId],
+    );
+  };
+
+  const selectAllModalFailedUpdates = () => {
+    if (!runDetails?.failedLockUpdates) return;
+    
+    const allModalFailedUpdates = runDetails.failedLockUpdates
+      .filter(update => !update.retrySuccessful)
+      .map(update => update.id);
+    
+    setSelectedModalFailedUpdates(allModalFailedUpdates);
+  };
+
+  const clearModalSelection = () => {
+    setSelectedModalFailedUpdates([]);
   };
 
   // Format date
@@ -1509,53 +1622,95 @@ export default function DailyTaskPage() {
 
                     {/* Failed Lock Updates - Mobile-friendly */}
                     {runDetails.failedLockUpdates &&
-                      runDetails.failedLockUpdates.length > 0 && (
+                      runDetails.failedLockUpdates.filter(update => !update.retrySuccessful).length > 0 && (
                         <div className="rounded-lg bg-red-50 p-4">
-                          <h3 className="mb-4 text-lg font-semibold text-red-800">
-                            Failed Lock Updates (
-                            {runDetails.failedLockUpdates.length})
-                          </h3>
+                          <div className="mb-4 flex flex-col space-y-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+                            <h3 className="text-lg font-semibold text-red-800">
+                              Failed Lock Updates (
+                              {runDetails.failedLockUpdates.filter(update => !update.retrySuccessful).length})
+                            </h3>
+                            <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
+                              <button
+                                onClick={selectAllModalFailedUpdates}
+                                className="w-full rounded-md bg-gray-500 px-3 py-1 text-sm text-white hover:bg-gray-600 sm:w-auto"
+                              >
+                                Select All
+                              </button>
+                              <button
+                                onClick={clearModalSelection}
+                                className="w-full rounded-md bg-gray-500 px-3 py-1 text-sm text-white hover:bg-gray-600 sm:w-auto"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                onClick={retryModalFailedUpdates}
+                                className="w-full rounded-md bg-orange-500 px-3 py-1 text-sm text-white hover:bg-orange-600 disabled:opacity-50 sm:w-auto"
+                                disabled={isModalRetrying || selectedModalFailedUpdates.length === 0}
+                              >
+                                {isModalRetrying ? "Retrying..." : `Retry (${selectedModalFailedUpdates.length})`}
+                              </button>
+                              <button
+                                onClick={deleteModalFailedUpdates}
+                                className="w-full rounded-md bg-red-500 px-3 py-1 text-sm text-white hover:bg-red-600 disabled:opacity-50 sm:w-auto"
+                                disabled={isModalDeleting || selectedModalFailedUpdates.length === 0}
+                              >
+                                {isModalDeleting ? "Deleting..." : "Delete"}
+                              </button>
+                            </div>
+                          </div>
 
                           {/* Mobile: Card layout */}
                           <div className="block space-y-3 sm:hidden">
-                            {runDetails.failedLockUpdates.map((update) => (
-                              <div
-                                key={update.id}
-                                className="rounded border bg-white p-3"
-                              >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <p className="font-medium text-gray-900">
-                                      {update.propertyName}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      {update.fullAddress}
-                                    </p>
-                                    <p className="text-sm text-gray-900">
-                                      Guest: {update.guestName}
-                                    </p>
+                            {runDetails.failedLockUpdates
+                              .filter(update => !update.retrySuccessful)
+                              .map((update) => (
+                                <div
+                                  key={update.id}
+                                  className="rounded border bg-white p-3"
+                                >
+                                  <div className="flex items-start space-x-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedModalFailedUpdates.includes(update.id)}
+                                      onChange={() => toggleModalFailedUpdate(update.id)}
+                                      className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                          <p className="font-medium text-gray-900">
+                                            {update.propertyName}
+                                          </p>
+                                          <p className="text-sm text-gray-600">
+                                            {update.fullAddress}
+                                          </p>
+                                          <p className="text-sm text-gray-900">
+                                            Guest: {update.guestName}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="font-mono text-sm text-gray-700">
+                                            {update.lockId}
+                                          </p>
+                                          <p className="text-sm text-gray-500">
+                                            Retries: {update.retryCount}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="mt-2 text-sm text-red-600">
+                                        {update.error.substring(0, 100)}
+                                        {update.error.length > 100 && "..."}
+                                      </div>
+                                      <div className="mt-2 text-xs text-gray-500">
+                                        <p>
+                                          Check-in: {formatDate(update.startDate)}
+                                        </p>
+                                        <p>Check-out: {formatDate(update.endDate)}</p>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="text-right">
-                                    <p className="font-mono text-sm text-gray-700">
-                                      {update.lockId}
-                                    </p>
-                                    <p className="text-sm text-gray-500">
-                                      Retries: {update.retryCount}
-                                    </p>
-                                  </div>
                                 </div>
-                                <div className="mt-2 text-sm text-red-600">
-                                  {update.error.substring(0, 100)}
-                                  {update.error.length > 100 && "..."}
-                                </div>
-                                <div className="mt-2 text-xs text-gray-500">
-                                  <p>
-                                    Check-in: {formatDate(update.startDate)}
-                                  </p>
-                                  <p>Check-out: {formatDate(update.endDate)}</p>
-                                </div>
-                              </div>
-                            ))}
+                              ))}
                           </div>
 
                           {/* Desktop: Table layout */}
@@ -1563,6 +1718,9 @@ export default function DailyTaskPage() {
                             <table className="w-full table-auto">
                               <thead>
                                 <tr className="bg-red-100">
+                                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">
+                                    Select
+                                  </th>
                                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">
                                     Property
                                   </th>
@@ -1587,42 +1745,52 @@ export default function DailyTaskPage() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {runDetails.failedLockUpdates.map((update) => (
-                                  <tr
-                                    key={update.id}
-                                    className="border-b border-red-200"
-                                  >
-                                    <td className="px-4 py-2">
-                                      <div className="font-medium">
-                                        {update.propertyName}
-                                      </div>
-                                      <div className="text-sm text-gray-600">
-                                        {update.fullAddress}
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-2">
-                                      {update.guestName}
-                                    </td>
-                                    <td className="px-4 py-2 font-mono text-sm">
-                                      {update.lockId}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm text-red-600">
-                                      <div className="max-w-xs">
-                                        {update.error.substring(0, 50)}
-                                        {update.error.length > 50 && "..."}
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-2 text-sm">
-                                      {formatDate(update.startDate)}
-                                    </td>
-                                    <td className="px-4 py-2 text-sm">
-                                      {formatDate(update.endDate)}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                      {update.retryCount}
-                                    </td>
-                                  </tr>
-                                ))}
+                                {runDetails.failedLockUpdates
+                                  .filter(update => !update.retrySuccessful)
+                                  .map((update) => (
+                                    <tr
+                                      key={update.id}
+                                      className="border-b border-red-200"
+                                    >
+                                      <td className="px-4 py-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedModalFailedUpdates.includes(update.id)}
+                                          onChange={() => toggleModalFailedUpdate(update.id)}
+                                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        <div className="font-medium">
+                                          {update.propertyName}
+                                        </div>
+                                        <div className="text-sm text-gray-600">
+                                          {update.fullAddress}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        {update.guestName}
+                                      </td>
+                                      <td className="px-4 py-2 font-mono text-sm">
+                                        {update.lockId}
+                                      </td>
+                                      <td className="px-4 py-2 text-sm text-red-600">
+                                        <div className="max-w-xs">
+                                          {update.error.substring(0, 50)}
+                                          {update.error.length > 50 && "..."}
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2 text-sm">
+                                        {formatDate(update.startDate)}
+                                      </td>
+                                      <td className="px-4 py-2 text-sm">
+                                        {formatDate(update.endDate)}
+                                      </td>
+                                      <td className="px-4 py-2">
+                                        {update.retryCount}
+                                      </td>
+                                    </tr>
+                                  ))}
                               </tbody>
                             </table>
                           </div>
